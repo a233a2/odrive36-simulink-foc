@@ -1,16 +1,61 @@
 function create_odrive_foc_controller(s, contract)
-% Build the stateless, single-precision subsystem used for STM32 code generation.
+% Assemble one stateless three-loop package with explicit per-axis state.
 ts = sprintf('%.16g', 1 / contract.sample_hz);
+input_tags = {'i_bc','theta_e','align_dq','vbus','v_limit','current_pi', ...
+    'mech_fb','command','gains','limits'};
+for k = 1:size(contract.inputs,1)
+    name = contract.inputs{k,1};
+    y = 60 + 54*(k-1);
+    input(s,name,k,29,y,'OutDataTypeStr','single', ...
+        'PortDimensions',num2str(contract.inputs{k,2}),'SampleTime',ts,'Interpolate','off');
+    if k <= numel(input_tags), send(s,input_tags{k},[name '/1'],166,y); end
+end
+put(s,'built-in/Demux','Split axis state',[174 580 184 640],'Outputs','[4 4]');
+wire(s,{'previous_state/1','Split axis state/1'});
+send(s,'state_i','Split axis state/1',223,595);
+send(s,'state_m','Split axis state/2',223,625);
+
+outer = stage(s,'Motion loops',[426 267 597 497], ...
+    {'command','mechanical','gains','limits','prior','align_i_dq'}, {'i_ref_dq','next_motion'});
+create_motion_loops(outer,contract);
+drive(s,'Motion loops',{'command','mech_fb','gains','limits','state_m','align_dq'},302);
+send(s,'next_m','Motion loops/2',620,port_y(outer,'Outport',2));
+
+inner = [s '/FOC Current Loop'];
+put(s,'built-in/SubSystem','FOC Current Loop',[895 84 1080 431], ...
+    'BackgroundColor','[0.84, 0.91, 0.98]');
+create_current_controller(inner,ts,contract.current_inputs,contract.current_outputs);
+set_param(inner,'ContentPreviewEnabled','off');
+send(s,'i_ref_dq','Motion loops/1',620,port_y(outer,'Outport',1));
+drive(s,'FOC Current Loop',{'i_bc','theta_e','i_ref_dq','vbus', ...
+    'v_limit','current_pi','state_i'},764);
+join_state = [s '/Join axis state'];
+put(s,'built-in/Mux','Join axis state',[1280 106 1288 169],'Inputs','2','DisplayOption','bar');
+align_input(join_state,1,inner,1);
+for k = 1:size(contract.outputs,1)
+    name = contract.outputs{k,1};
+    y = port_y(inner,'Outport',k);
+    if k == 1, y = port_y(join_state,'Outport',1); end
+    output(s,name,k,1408,y,'OutDataTypeStr','single','PortDimensions',num2str(contract.outputs{k,2}));
+end
+wire(s,{'FOC Current Loop/1','Join axis state/1'});
+read(s,'next_m','Join axis state/2',1148);
+wire(s,{'Join axis state/1','next_state/1'; ...
+    'FOC Current Loop/2','v_dq_v/1'; 'FOC Current Loop/3','duty_abc/1'});
+end
+
+function create_current_controller(s, ts, inputs, outputs)
+% Current-loop layout is shared by calibration and all three run modes.
 input_y = [206 103 424 475 545 605 664];
 output_y = [91 146 404];
-for k = 1:size(contract.inputs, 1)
-    input(s, contract.inputs{k, 1}, k, 30, input_y(k), ...
-        'OutDataTypeStr', 'single', 'PortDimensions', num2str(contract.inputs{k, 2}), ...
+for k = 1:size(inputs, 1)
+    input(s, inputs{k, 1}, k, 30, input_y(k), ...
+        'OutDataTypeStr', 'single', 'PortDimensions', num2str(inputs{k, 2}), ...
         'SampleTime', ts, 'Interpolate', 'off');
 end
-for k = 1:size(contract.outputs, 1)
-    output(s, contract.outputs{k, 1}, k, 1464, output_y(k), ...
-        'OutDataTypeStr', 'single', 'PortDimensions', num2str(contract.outputs{k, 2}));
+for k = 1:size(outputs, 1)
+    output(s, outputs{k, 1}, k, 1464, output_y(k), ...
+        'OutDataTypeStr', 'single', 'PortDimensions', num2str(outputs{k, 2}));
 end
 
 trig = stage(s, 'Sin and cos', [145 79 265 127], {'theta'}, {'cos_sin'});
@@ -51,8 +96,8 @@ wire(s, {'Clarke and Park/1','Current filter/1'});
 send(s, 'idq_filt', 'Current filter/1', 590, 138);
 
 pi_stage = stage(s, 'Current PI', [716 174 852 338], ...
-    {'measured','reference','gains','integral','maximum'}, {'v_raw','i_candidate'});
-current_pi(pi_stage, ts);
+    {'measured','reference','gains','integral','maximum'}, {'pi_value','i_candidate'});
+build_pi(pi_stage, ts, 2);
 align_input(pi_stage, 1, filter, 1);
 wire(s, {'Current filter/1','Current PI/1'});
 read(s, 'reference', 'Current PI/2', 607);
@@ -103,24 +148,198 @@ send(s, 'bus_v', 'vbus_v/1', 125, 518);
 send(s, 'voltage_limit', 'Phase voltage limit/1', 409, 509);
 end
 
-function current_pi(s, ts)
-% Vector lanes are d and q. Each axis is clamped and integrated independently.
+function create_motion_loops(s, contract)
+% Position P supplies the speed command. Speed PI or torque mode supplies Iq.
+split_port(s,'command',{'mode','target'},[1 1],90);
+split_port(s,'mechanical',{'position','speed'},[1 1],205);
+split_port(s,'gains',{'speed_gains','position_kp'},[2 1],320);
+split_port(s,'limits',{'iq_limit','speed_limit','accel_limit','iq_rate','kt'},ones(1,5),480);
+split_port(s,'prior',{'speed_i','prior_speed','prior_iq','prior_tick'},ones(1,4),694);
+set_param([s '/align_i_dq'],'Position',port_rect(23,836));
+send(s,'align_ref','align_i_dq/1',225,836);
+
+position = stage(s,'Position P',[487 80 631 178],{'target','measured','kp'},{'speed_request'});
+sum_block(position,'Position error',[151 47 181 114],'+-');
+product(position,'P gain',[248 56 293 133],'**');
+wire(position,{'target/1','Position error/1'; 'measured/1','Position error/2'; ...
+    'Position error/1','P gain/1'; 'kp/1','P gain/2'; 'P gain/1','speed_request/1'});
+drive(s,'Position P',{'target','position','position_kp'},380);
+send(s,'pos_request','Position P/1',649,129);
+mode_compare(s,'Position mode',3,[490 220 540 272]);
+send(s,'pos_mode','Position mode/1',572,246);
+put(s,'built-in/Switch','Select speed request',[855 83 913 187],'Criteria','u2 ~= 0');
+drive(s,'Select speed request',{'pos_request','pos_mode','target'},751);
+send(s,'speed_req','Select speed request/1',939,135);
+
+dt = sprintf('single(1/%d)',contract.motion_hz);
+ramp(s,'Speed and acceleration limits',[1156 65 1306 209],dt);
+drive(s,'Speed and acceleration limits',{'speed_req','speed_limit','prior_speed','accel_limit'},1048);
+send(s,'speed_ref','Speed and acceleration limits/1',1332,137);
+speed_pi = stage(s,'Speed PI',[1551 65 1689 221], ...
+    {'measured','reference','gains','integral','maximum'},{'pi_value','i_candidate'});
+build_pi(speed_pi,sprintf('1/%d',contract.motion_hz),1);
+drive(s,'Speed PI',{'speed','speed_ref','speed_gains','speed_i','iq_limit'},1443);
+send(s,'iq_speed','Speed PI/1',1724,port_y(speed_pi,'Outport',1));
+send(s,'next_speed_i','Speed PI/2',1724,port_y(speed_pi,'Outport',2));
+
+product(s,'Torque divided by Kt',[491 347 553 412],'*/');
+drive(s,'Torque divided by Kt',{'target','kt'},380);
+send(s,'iq_request','Torque divided by Kt/1',590,port_y([s '/Torque divided by Kt'],'Outport',1));
+ramp(s,'Torque current and slew limits',[858 315 1032 468],dt);
+drive(s,'Torque current and slew limits',{'iq_request','iq_limit','prior_iq','iq_rate'},751);
+send(s,'iq_torque','Torque current and slew limits/1',1071,port_y([s '/Torque current and slew limits'],'Outport',1));
+
+divider = stage(s,'1 kHz tick',[492 560 632 641],{'phase'},{'update','next_phase'});
+build_divider(divider,contract.sample_hz/contract.motion_hz);
+read(s,'prior_tick','1 kHz tick/1',380);
+send(s,'outer_update','1 kHz tick/1',673,port_y(divider,'Outport',1));
+send(s,'outer_tick','1 kHz tick/2',673,port_y(divider,'Outport',2));
+send(s,'prior_motion','prior/1',225,782);
+
+commit = stage(s,'Mode and state commit',[1958 128 2142 566], ...
+    {'mode','align','speed_iq','speed_i','speed_ref','torque_iq','prior','update','phase'}, ...
+    {'current_ref','state_next'});
+build_motion_commit(commit);
+drive(s,'Mode and state commit',{'mode','align_ref','iq_speed','next_speed_i', ...
+    'speed_ref','iq_torque','prior_motion','outer_update','outer_tick'},1845);
+place_out(s,'i_ref_dq',2275,port_y(commit,'Outport',1));
+place_out(s,'next_motion',2275,port_y(commit,'Outport',2));
+wire(s,{'Mode and state commit/1','i_ref_dq/1'; 'Mode and state commit/2','next_motion/1'});
+end
+
+function ramp(s, name, pos, dt)
+p = stage(s,name,pos,{'target','limit','previous','rate'},{'reference'});
+clamp(p,'Limit setpoint',[164 32 265 105]);
+sum_block(p,'Step error',[353 45 390 116],'+-');
+gain(p,'Step time',[273 183 344 219],dt);
+clamp(p,'Limit rate',[472 43 574 134]);
+sum_block(p,'Apply step',[648 52 680 123],'++');
+send(p,'previous_step','previous/1',100,163);
+read(p,'previous_step','Step error/2',244);
+read(p,'previous_step','Apply step/2',545);
+place_out(p,'reference',776,port_y([p '/Apply step'],'Outport',1));
+wire(p,{'target/1','Limit setpoint/1'; 'limit/1','Limit setpoint/2'; ...
+    'Limit setpoint/1','Step error/1'; 'Step error/1','Limit rate/1'; ...
+    'rate/1','Step time/1'; 'Step time/1','Limit rate/2'; ...
+    'Limit rate/1','Apply step/1'; 'Apply step/1','reference/1'});
+end
+
+function build_divider(s, ratio)
+constant(s,'Base tick',[35 98 103 122],'single(1)');
+sum_block(s,'Increment tick',[155 47 187 110],'++');
+constant(s,'Ticks per update',[203 126 277 149],sprintf('single(%d)',ratio));
+put(s,'built-in/RelationalOperator','Outer update',[320 50 376 118],'Operator','>=');
+constant(s,'First tick',[232 182 278 206],'single(0)');
+send(s,'increment','Increment tick/1',205,77);
+send(s,'update_signal','Outer update/1',410,85);
+put(s,'built-in/Switch','Wrap phase',[545 161 598 246],'Criteria','u2 ~= 0');
+read(s,'update_signal','Wrap phase/2',425);
+read(s,'increment','Wrap phase/3',425);
+place_out(s,'update',663,85);
+place_out(s,'next_phase',663,204);
+wire(s,{'phase/1','Increment tick/1'; 'Base tick/1','Increment tick/2'; ...
+    'Increment tick/1','Outer update/1'; 'Ticks per update/1','Outer update/2'; ...
+    'First tick/1','Wrap phase/1'; 'Outer update/1','update/1'; 'Wrap phase/1','next_phase/1'});
+end
+
+function build_motion_commit(s)
+% Hold outer-loop references for 19 inner ticks. Alignment clears outer state.
+names = {'mode','align','speed_iq','speed_i','speed_ref','torque_iq','prior','update','phase'};
+for k = 1:numel(names)
+    send(s,names{k},[names{k} '/1'],116,53+54*(k-1));
+end
+constant(s,'Zero',[325 248 376 272],'single(0)');
+send(s,'zero','Zero/1',407,260);
+mode_compare(s,'Torque mode',1,[332 58 387 112]);
+mode_compare(s,'Alignment mode',0,[332 145 387 199]);
+send(s,'is_torque','Torque mode/1',433,85);
+send(s,'is_align','Alignment mode/1',433,172);
+put(s,'built-in/Mux','Speed candidate',[563 312 573 425],'Inputs','3','DisplayOption','bar');
+put(s,'built-in/Mux','Torque candidate',[563 467 573 580],'Inputs','3','DisplayOption','bar');
+drive(s,'Speed candidate',{'speed_i','speed_ref','speed_iq'},435);
+drive(s,'Torque candidate',{'zero','zero','torque_iq'},435);
+send(s,'candidate_speed','Speed candidate/1',609,368);
+send(s,'candidate_torque','Torque candidate/1',609,523);
+put(s,'built-in/Switch','Select active loop',[774 329 832 435],'Criteria','u2 ~= 0');
+drive(s,'Select active loop',{'candidate_torque','is_torque','candidate_speed'},665);
+send(s,'active_candidate','Select active loop/1',871,383);
+select(s,'Previous references',[791 530 891 559],'4','[1 2 3]');
+read(s,'prior','Previous references/1',669);
+send(s,'held_references','Previous references/1',926,545);
+put(s,'built-in/Switch','Commit on 1 kHz tick',[1064 344 1124 454],'Criteria','u2 ~= 0');
+drive(s,'Commit on 1 kHz tick',{'active_candidate','update','held_references'},948);
+put(s,'built-in/Mux','State with phase',[1243 368 1253 453],'Inputs','2','DisplayOption','bar');
+wire(s,{'Commit on 1 kHz tick/1','State with phase/1'});
+read(s,'phase','State with phase/2',1139);
+send(s,'running_state','State with phase/1',1292,411);
+constant(s,'Clear outer state',[1225 231 1309 259],'single(zeros(1,4))');
+send(s,'clear_motion','Clear outer state/1',1347,245);
+put(s,'built-in/Switch','Reset while aligning',[1524 341 1586 447],'Criteria','u2 ~= 0');
+drive(s,'Reset while aligning',{'clear_motion','is_align','running_state'},1412);
+place_out(s,'state_next',1736,394);
+wire(s,{'Reset while aligning/1','state_next/1'});
+select(s,'Iq reference',[1672 477 1784 512],'4','3');
+wire(s,{'Reset while aligning/1','Iq reference/1'});
+put(s,'built-in/Mux','Id zero and Iq',[1900 451 1910 523],'Inputs','2','DisplayOption','bar');
+read(s,'zero','Id zero and Iq/1',1801);
+wire(s,{'Iq reference/1','Id zero and Iq/2'});
+send(s,'running_i_dq','Id zero and Iq/1',1958,486);
+put(s,'built-in/Switch','Select current reference',[2181 421 2252 530],'Criteria','u2 ~= 0');
+drive(s,'Select current reference',{'align','is_align','running_i_dq'},2059);
+place_out(s,'current_ref',2341,475);
+wire(s,{'Select current reference/1','current_ref/1'});
+end
+
+function split_port(s, name, tags, widths, y)
+set_param([s '/' name],'Position',port_rect(23,y));
+block = ['Unpack ' name];
+height = 28*numel(tags);
+put(s,'built-in/Demux',block,[157 y-height/2 167 y+height/2], ...
+    'Outputs',mat2str(widths));
+wire(s,{[name '/1'],[block '/1']});
+for k = 1:numel(tags)
+    send(s,tags{k},sprintf('%s/%d',block,k),225,port_y([s '/' block],'Outport',k));
+end
+end
+
+function mode_compare(s, name, value, pos)
+put(s,'built-in/RelationalOperator',name,pos,'Operator','==');
+read(s,'mode',[name '/1'],pos(1)-110);
+y=port_y([s '/' name],'Inport',2);
+constant(s,[name ' value'],[pos(1)-71 y-10 pos(1)-25 y+10],sprintf('single(%d)',value));
+set_param([s '/' name ' value'],'ShowName','off');
+wire(s,{[name ' value/1'],[name '/2']});
+end
+
+function drive(s, name, tags, x)
+for k = 1:numel(tags)
+    read(s,tags{k},sprintf('%s/%d',name,k),x, ...
+        sprintf('Read %s for %s %d',strrep(tags{k},'_',' '),name,k));
+end
+end
+
+function place_out(s, name, x, y)
+set_param([s '/' name],'Position',port_rect(x,y));
+end
+
+function build_pi(s, ts, axes)
+% Identical conditional-integration PI law for speed and each current lane.
 set_param([s '/integral'], 'Position', port_rect(23, 363));
 set_param([s '/maximum'], 'Position', port_rect(23, 421));
 sum_block(s, 'Error', [151 76 180 128], '-+');
-select(s, 'Kp d q', [146 156 235 191], '4', '[1 3]');
-select(s, 'Ki d q', [146 221 235 256], '4', '[2 4]');
+select(s, 'Kp lanes', [146 156 235 191], num2str(2*axes), mat2str(1:2:2*axes));
+select(s, 'Ki lanes', [146 221 235 256], num2str(2*axes), mat2str(2:2:2*axes));
 send(s, 'error_dq', 'Error/1', 227, 102);
 send(s, 'old_i', 'integral/1', 151, 363);
 send(s, 'maximum', 'maximum/1', 151, 421);
 wire(s, {'measured/1','Error/1'; 'reference/1','Error/2'; ...
-    'gains/1','Kp d q/1'; 'gains/1','Ki d q/1'});
+    'gains/1','Kp lanes/1'; 'gains/1','Ki lanes/1'});
 product(s, 'Proportional', [387 122 432 174], '**');
 product(s, 'Integral rate', [387 221 432 273], '**');
 send(s, 'p_term', 'Proportional/1', 474, 148);
 read(s, 'error_dq', 'Proportional/1', 263);
 read(s, 'error_dq', 'Integral rate/2', 263, 'Error for integral');
-wire(s, {'Kp d q/1','Proportional/2'; 'Ki d q/1','Integral rate/1'});
+wire(s, {'Kp lanes/1','Proportional/2'; 'Ki lanes/1','Integral rate/1'});
 gain(s, 'Ts', [480 226 565 267], ['single(' ts ')']);
 sum_block(s, 'Integrate', [641 228 673 300], '++');
 read(s, 'old_i', 'Integrate/2', 545);
@@ -141,31 +360,31 @@ read(s, 'maximum', 'Conditional integration/5', 916, 'Conditional limit');
 sum_block(s, 'Add P and I', [1322 273 1354 355], '++');
 align_input([s '/Add P and I'], 2, conditional, 1);
 read(s, 'p_term', 'Add P and I/1', 1212);
-clamp(s, 'Clamp axis voltage', [1471 288 1575 404]);
-align_input([s '/Clamp axis voltage'], 1, [s '/Add P and I'], 1);
-read(s, 'maximum', 'Clamp axis voltage/2', 1363, 'Axis voltage limit');
-set_param([s '/v_raw'], 'Position', port_rect(1634, port_y([s '/Clamp axis voltage'], 'Outport', 1)));
+clamp(s, 'Clamp PI output', [1471 288 1575 404]);
+align_input([s '/Clamp PI output'], 1, [s '/Add P and I'], 1);
+read(s, 'maximum', 'Clamp PI output/2', 1363, 'PI output limit');
+set_param([s '/pi_value'], 'Position', port_rect(1634, port_y([s '/Clamp PI output'], 'Outport', 1)));
 set_param([s '/i_candidate'], 'Position', port_rect(1634, 440));
 send(s, 'new_i', 'Conditional integration/1', 1226, 428);
 read(s, 'new_i', 'i_candidate/1', 1517);
 wire(s, {'Conditional integration/1','Add P and I/2'; ...
-    'Add P and I/1','Clamp axis voltage/1'; 'Clamp axis voltage/1','v_raw/1'});
+    'Add P and I/1','Clamp PI output/1'; 'Clamp PI output/1','pi_value/1'});
 end
 
 function conditional_integral(s)
-sum_block(s, 'Candidate voltage', [146 58 179 102], '++');
+sum_block(s, 'Candidate output', [146 58 179 102], '++');
 put(s, 'built-in/Abs', 'Magnitude', [239 55 289 85]);
 put(s, 'built-in/RelationalOperator', 'Within limit', [403 45 453 100], 'Operator', '<=');
-product(s, 'Voltage times error', [254 186 290 230], '**');
+product(s, 'Output times error', [254 186 290 230], '**');
 put(s, 'built-in/RelationalOperator', 'Error unwinds', [403 186 453 230], 'Operator', '<');
 constant(s, 'Zero', [321 241 357 266], 'single(0)');
 put(s, 'built-in/Logic', 'Allow integral update', [522 105 573 159], 'Operator', 'OR', 'Inputs', '2');
 put(s, 'built-in/Switch', 'Select integral', [665 108 713 189], 'Criteria', 'u2 ~= 0');
 set_param([s '/i_next'], 'Position', [777 142 806 156]);
-wire(s, {'p/1','Candidate voltage/1'; 'i_candidate/1','Candidate voltage/2'; ...
-    'Candidate voltage/1','Magnitude/1'; 'Magnitude/1','Within limit/1'; ...
-    'maximum/1','Within limit/2'; 'Candidate voltage/1','Voltage times error/1'; ...
-    'error/1','Voltage times error/2'; 'Voltage times error/1','Error unwinds/1'; ...
+wire(s, {'p/1','Candidate output/1'; 'i_candidate/1','Candidate output/2'; ...
+    'Candidate output/1','Magnitude/1'; 'Magnitude/1','Within limit/1'; ...
+    'maximum/1','Within limit/2'; 'Candidate output/1','Output times error/1'; ...
+    'error/1','Output times error/2'; 'Output times error/1','Error unwinds/1'; ...
     'Zero/1','Error unwinds/2'; 'Within limit/1','Allow integral update/1'; ...
     'Error unwinds/1','Allow integral update/2'; 'i_candidate/1','Select integral/1'; ...
     'Allow integral update/1','Select integral/2'; 'i_previous/1','Select integral/3'; ...

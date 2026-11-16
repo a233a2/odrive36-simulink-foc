@@ -50,7 +50,7 @@ def main():
     assets = tools / 'ui_assets'
     dependencies = ROOT / 'tmp/testdeps'
     unicorn_dll = dependencies / 'unicorn/lib/unicorn.dll'
-    if not unicorn_dll.is_file() or not (dependencies / 'elftools').is_dir():
+    if not unicorn_dll.is_file() or not (dependencies / 'elftools').is_dir() or not (dependencies / 'serial').is_dir():
         raise SystemExit('运行 python tools/install_test_deps.py 后再打包。')
     icon = assets / 'odrive_foc.ico'
     dist = ROOT / 'build/Tools'
@@ -78,6 +78,7 @@ def main():
     subprocess.run([
         sys.executable, *common, '--windowed', '--name', 'ODriveFOC', '--icon', str(icon),
         '--exclude-module', 'unicorn', '--exclude-module', 'elftools',
+        '--hidden-import', 'serial.urlhandler.protocol_loop',
         '--add-data', str(worker) + os.pathsep + 'arm',
         '--add-data', str(icon) + os.pathsep + 'ui_assets',
         '--version-file', str(assets / 'version_info.txt'), str(tools / 'deploy_gui.py'),

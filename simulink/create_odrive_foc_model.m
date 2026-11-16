@@ -1,5 +1,5 @@
 function create_odrive_foc_model(output_folder)
-% Create the editable closed-loop model and its one deployable subsystem.
+% Create an editable PMSM bench around the one deployable three-loop subsystem.
 if nargin == 0
     output_folder = fileparts(mfilename('fullpath'));
 end
@@ -8,113 +8,134 @@ if ~isfolder(output_folder)
 end
 contract = odrive_foc_contract();
 model = contract.model;
-model_file = fullfile(output_folder, [model '.slx']);
+model_file = fullfile(output_folder,[model '.slx']);
 assert(~isfile(model_file) && ~bdIsLoaded(model), ...
-    'Choose an empty output folder and close %s before recreating the model.', model);
+    'Choose an empty output folder and close %s before recreating the model.',model);
 load_system('simulink');
 new_system(model);
-close_model = onCleanup(@() close_system(model, 0));
-ts = sprintf('%.16g', 1 / contract.sample_hz);
-set_param(model, 'Description', ...
-    ['ODrive 3.6 current-loop simulation. Open the scopes after Run. ' ...
-     'The deployment script exports FOC Current Loop as a standalone model.'], ...
-    'SolverType', 'Fixed-step', 'Solver', 'FixedStepDiscrete', 'FixedStep', ts, ...
-    'StartTime', '0', 'StopTime', '0.42', 'EnableMultiTasking', 'off', ...
-    'AlgebraicLoopMsg', 'error', 'SignalLogging', 'on', 'SignalLoggingName', 'logsout');
+close_model = onCleanup(@() close_system(model,0));
+ts = sprintf('%.16g',1/contract.sample_hz);
+set_param(model,'Description', ...
+    'ODrive 3.6 three-loop bench. Export the FOC Motion Controller subsystem to the STM32.', ...
+    'SolverType','Fixed-step','Solver','FixedStepDiscrete','FixedStep',ts, ...
+    'StartTime','0','StopTime','4','EnableMultiTasking','off', ...
+    'AlgebraicLoopMsg','error','SignalLogging','on','SignalLoggingName','logsout');
 
-% R, L and pole pairs are the project values. Flux, inertia and damping
-% are illustrative until measured. The model workspace travels with the SLX.
-workspace = get_param(model, 'ModelWorkspace');
-assignin(workspace, 'motor', struct('R_ohm', 8, 'L_h', 0.00425, ...
-    'pole_pairs', 7, 'flux_wb', 0.003, 'inertia_kgm2', 3e-5, ...
-    'damping_nms', 3e-4));
+% Demo parameters reside in the SLX workspace. Kt and mechanics are illustrative.
+workspace = get_param(model,'ModelWorkspace');
+assignin(workspace,'motor',struct('R_ohm',8,'L_h',0.00425, ...
+    'pole_pairs',7,'flux_wb',0.003,'inertia_kgm2',3e-5,'damping_nms',3e-4));
+assignin(workspace,'demo_mode',2);
+assignin(workspace,'demo_target',2);
+assignin(workspace,'demo_load_nm',0.0014);
 
-controller = [model '/' contract.subsystem];
-add_block('built-in/SubSystem', controller, 'Position', [382 111 567 397], ...
-    'TreatAsAtomicUnit', 'on', 'BackgroundColor', '[0.82, 0.91, 0.98]', ...
-    'Description', 'Single-precision, stateless 20 kHz controller exported to the STM32.');
-create_odrive_foc_controller(controller, contract);
-set_param(controller, 'ContentPreviewEnabled', 'off');
+controller_name = contract.subsystem;
+controller = [model '/' controller_name];
+add_block('built-in/SubSystem',controller,'Position',[429 71 660 620], ...
+    'TreatAsAtomicUnit','on','BackgroundColor','[0.82, 0.91, 0.98]', ...
+    'Description','Position P and speed PI at 1 kHz, current FOC and PWM at 20 kHz.');
+create_odrive_foc_controller(controller,contract);
+set_param(controller,'ContentPreviewEnabled','off');
+at_input(model,'built-in/From','Phase current feedback',[controller_name '/1'],163, ...
+    'GotoTag','phase_bc','ShowName','off');
+at_input(model,'built-in/From','Electrical angle feedback',[controller_name '/2'],163, ...
+    'GotoTag','theta_e','ShowName','off');
+at_input(model,'built-in/Constant','Alignment override',[controller_name '/3'],163, ...
+    'Value','single([0 0])');
+at_input(model,'built-in/Constant','DC bus V',[controller_name '/4'],163,'Value','single(12)');
+at_input(model,'built-in/Constant','Phase limit V',[controller_name '/5'],163,'Value','single(2)');
+at_input(model,'built-in/Constant','Current PI gains',[controller_name '/6'],163, ...
+    'Value','single(2*pi*300*[motor.L_h motor.R_ohm motor.L_h motor.R_ohm])');
 
-at_input(model, 'built-in/From', 'Phase current feedback', 'FOC Current Loop/1', 167, ...
-    'GotoTag', 'measured_ib_ic', 'ShowName', 'off');
-at_input(model, 'built-in/From', 'Electrical angle feedback', 'FOC Current Loop/2', 167, ...
-    'GotoTag', 'rotor_theta_e', 'ShowName', 'off');
-command_y = port_y(controller, 'Inport', 3);
-put(model, 'built-in/SubSystem', 'd q current reference', ...
-    [167 command_y-15 257 command_y+15], 'BackgroundColor', '[0.95, 0.95, 0.95]');
-current_command([model '/d q current reference'], ts);
-set_param([model '/d q current reference'], 'ContentPreviewEnabled', 'off');
-wire(model, {'d q current reference/1','FOC Current Loop/3'});
-at_input(model, 'built-in/Constant', 'DC bus V', 'FOC Current Loop/4', 167, 'Value', 'single(12)');
-at_input(model, 'built-in/Constant', 'Phase limit V', 'FOC Current Loop/5', 167, 'Value', 'single(2)');
-at_input(model, 'built-in/Constant', 'PI gains', 'FOC Current Loop/6', 167, 'Value', ...
-    'single(2*pi*300*[motor.L_h motor.R_ohm motor.L_h motor.R_ohm])');
-at_input(model, 'built-in/From', 'Controller state feedback', 'FOC Current Loop/7', 167, ...
-    'GotoTag', 'axis_state', 'ShowName', 'off');
-send(model, 'bus', 'DC bus V/1', 275, port_y(controller, 'Inport', 4)+18, 'Bus for inverter');
-send(model, 'idq_ref', 'd q current reference/1', 275, command_y-20, 'Reference for scopes');
-log_line(model, 'd q current reference/1', 'FOC Current Loop/3', 'idq_ref_a');
+at_input(model,'built-in/From','Mechanical feedback',[controller_name '/7'],163, ...
+    'GotoTag','mech_fb','ShowName','off');
+command_y = port_y(controller,'Inport',8);
+command = stage(model,'Motion command',[140 command_y-20 279 command_y+20], ...
+    {},{'mode_target'},'[0.94, 0.94, 0.94]');
+demo_command(command,ts);
+wire(model,{'Motion command/1',[controller_name '/8']});
+log_line(model,'Motion command/1',[controller_name '/8'],'motion_command');
+at_input(model,'built-in/Constant','Speed and position gains',[controller_name '/9'],163, ...
+    'Value','single([0.045 0.20 3.0])');
+at_input(model,'built-in/Constant','Motion limits',[controller_name '/10'],163, ...
+    'Value','single([0.20 3 12 2 1.5*motor.pole_pairs*motor.flux_wb])');
+at_input(model,'built-in/From','Controller prior state',[controller_name '/11'],163, ...
+    'GotoTag','axis_state','ShowName','off');
+send(model,'bus','DC bus V/1',276,port_y(controller,'Inport',4)+17,'Bus for inverter');
 
-memory = at_output(model, 'built-in/UnitDelay', 'Axis state z^-1', 'FOC Current Loop/1', 613, ...
-    'SampleTime', ts, 'InitialCondition', 'single([0 0 0 0])');
-send(model, 'axis_state', 'Axis state z^-1/1', 765, port_y(memory, 'Outport', 1));
-send(model, 'voltage_dq', 'FOC Current Loop/2', 614, port_y(controller, 'Outport', 2));
+memory = at_output(model,'built-in/UnitDelay','Axis state z^-1',[controller_name '/1'],739, ...
+    'SampleTime',ts,'InitialCondition','single(zeros(1,8))');
+send(model,'axis_state','Axis state z^-1/1',860,port_y(memory,'Outport',1));
+ref_y = port_y(controller,'Outport',1)+65;
+gain(model,'Dq reference for scopes',[753 ref_y-18 860 ref_y+18], ...
+    'single([zeros(1,8); 0 0 0 0 0 0 1 0])','Matrix(K*u) (u vector)');
+wire(model,{[controller_name '/1'],'Dq reference for scopes/1'});
+tag = send(model,'idq_ref','Dq reference for scopes/1',900,ref_y);
+log_line(model,'Dq reference for scopes/1',[tag '/1'],'idq_ref_a');
+send(model,'voltage_dq',[controller_name '/2'],722,port_y(controller,'Outport',2));
 
-duty_y = port_y(controller, 'Outport', 3);
-inverter = stage(model, 'Averaged inverter', [700 duty_y-20 846 duty_y+60], ...
-    {'duty_abc','vbus_v'}, {'phase_voltage_v'}, '[0.96, 0.93, 0.85]');
+duty_y = port_y(controller,'Outport',3);
+inverter = stage(model,'Averaged inverter',[873 duty_y-20 1019 duty_y+60], ...
+    {'duty_abc','vbus_v'},{'phase_voltage_v'},'[0.96, 0.93, 0.85]');
 averaged_inverter(inverter);
-at_input(model, 'built-in/From', 'Inverter DC bus', 'Averaged inverter/2', 591, ...
-    'GotoTag', 'bus', 'ShowName', 'off');
-wire(model, {'FOC Current Loop/3','Averaged inverter/1'});
-log_line(model, 'FOC Current Loop/3', 'Averaged inverter/1', 'duty_abc');
+at_input(model,'built-in/From','Inverter DC bus','Averaged inverter/2',753, ...
+    'GotoTag','bus','ShowName','off');
+wire(model,{[controller_name '/3'],'Averaged inverter/1'});
+log_line(model,[controller_name '/3'],'Averaged inverter/1','duty_abc');
+send(model,'duty',[controller_name '/3'],717,duty_y+76,'Duty for scopes');
 
-inverter_y = port_y(inverter, 'Outport', 1);
-plant = stage(model, 'PMSM with load input', [947 inverter_y-44 1131 inverter_y+132], ...
+inverter_y = port_y(inverter,'Outport',1);
+plant = stage(model,'PMSM with load input',[1148 inverter_y-57 1374 inverter_y+167], ...
     {'phase_voltage_v','load_torque_nm'}, ...
-    {'current_bc_a','theta_e_rad','current_dq_a','speed_rad_s','torque_nm'}, '[0.86, 0.94, 0.87]');
-pmsm(plant, ts);
-wire(model, {'Averaged inverter/1','PMSM with load input/1'});
-at_input(model, 'built-in/Step', 'Load torque step', 'PMSM with load input/2', 777, ...
-    'Time', '0.18', 'Before', 'single(0)', 'After', 'single(0.0014)', ...
-    'SampleTime', ts, 'OutDataTypeStr', 'single');
-log_line(model, 'Load torque step/1', 'PMSM with load input/2', 'load_torque_nm');
-send(model, 'load', 'Load torque step/1', 883, inverter_y+157, 'Load for scopes');
+    {'current_bc_a','theta_e_rad','current_dq_a','speed_rad_s','torque_nm','position_rad'}, ...
+    '[0.86, 0.94, 0.87]');
+pmsm(plant,ts);
+wire(model,{'Averaged inverter/1','PMSM with load input/1'});
+at_input(model,'built-in/Step','Load torque step','PMSM with load input/2',930, ...
+    'Time','0.65','Before','single(0)','After','single(demo_load_nm)', ...
+    'SampleTime',ts,'OutDataTypeStr','single');
+log_line(model,'Load torque step/1','PMSM with load input/2','load_torque_nm');
+send(model,'load','Load torque step/1',1044,inverter_y+151,'Load for scopes');
 for entry = {
-    'measured_ib_ic',1,''; 'rotor_theta_e',2,''; ...
-    'idq_actual',3,'idq_motor_a'; 'speed',4,'speed_rad_s'; 'torque',5,'torque_nm'
+    'phase_bc',1,''; 'theta_e',2,''; ...
+    'idq_actual',3,'idq_motor_a'; 'speed',4,'speed_rad_s'; ...
+    'torque',5,'torque_nm'; 'position',6,'position_rad'
     }.'
-    source = sprintf('PMSM with load input/%d', entry{2});
-    tag = send(model, entry{1}, source, 1192, port_y(plant, 'Outport', entry{2}));
-    if ~isempty(entry{3})
-        log_line(model, source, [tag '/1'], entry{3});
-    end
-end
-send(model, 'duty', 'FOC Current Loop/3', 615, duty_y-39, 'Duty for scopes');
-
-scope(model, 'd q currents Scope', [290 601 361 673], ...
-    {'idq_ref','idq_actual'}, {'dq ref (A)','dq motor (A)'});
-scope(model, 'Speed and torque Scope', [655 601 726 673], ...
-    {'speed','torque','load'}, {'Speed (rad/s)','Te (N m)','Load (N m)'});
-scope(model, 'Voltage and PWM Scope', [1020 601 1091 673], ...
-    {'voltage_dq','duty'}, {'Vdq (V)','Duty abc'});
-
-set_param(model, 'SimulationCommand', 'update');
-save_system(model, model_file);
-fprintf('Saved %s\n', model_file);
+    source = sprintf('PMSM with load input/%d',entry{2});
+    tag = send(model,entry{1},source,1444,port_y(plant,'Outport',entry{2}));
+    if ~isempty(entry{3}), log_line(model,source,[tag '/1'],entry{3}); end
 end
 
-function current_command(s, ts)
-constant(s, 'Id reference A', [76 59 143 89], 'single(0)');
-put(s, 'built-in/Step', 'Iq step A', [76 124 143 154], ...
-    'Time', '0.04', 'Before', 'single(0)', 'After', 'single(0.12)', ...
-    'SampleTime', ts, 'OutDataTypeStr', 'single');
-put(s, 'built-in/Mux', 'Reference d q', [235 67 242 147], 'Inputs', '2', 'DisplayOption', 'bar');
-put(s, 'built-in/Outport', 'idq_a', [305 100 335 114], 'Port', '1');
-wire(s, {'Id reference A/1','Reference d q/1'; 'Iq step A/1','Reference d q/2'; ...
-    'Reference d q/1','idq_a/1'});
+put(model,'built-in/Mux','Position and speed',[1258 765 1268 829],'Inputs','2','DisplayOption','bar');
+at_input(model,'built-in/From','Position for controller','Position and speed/1',1117, ...
+    'GotoTag','position','ShowName','off');
+at_input(model,'built-in/From','Speed for controller','Position and speed/2',1117, ...
+    'GotoTag','speed','ShowName','off');
+send(model,'mech_fb','Position and speed/1',1339,798);
+scope(model,'Current Scope',[330 733 410 813], ...
+    {'idq_ref','idq_actual'},{'dq ref (A)','dq motor (A)'});
+scope(model,'Motion Scope',[680 754 760 834], ...
+    {'position','speed','torque','load'},{'Position (rad)','Speed (rad/s)','Te (N m)','Load (N m)'});
+scope(model,'Voltage and PWM Scope',[971 736 1051 816], ...
+    {'voltage_dq','duty'},{'Vdq (V)','Duty abc'});
+
+set_param(model,'SimulationCommand','update');
+save_system(model,model_file);
+fprintf('Saved %s\n',model_file);
 end
+
+function demo_command(s,ts)
+% Mode 1 torque [Nm], 2 speed [rad/s], 3 position [rad].
+constant(s,'Mode 1 torque 2 speed 3 position',[67 55 160 84],'single(demo_mode)');
+put(s,'built-in/Step','Target step',[67 129 160 158], ...
+    'Time','0.04','Before','single(0)','After','single(demo_target)', ...
+    'SampleTime',ts,'OutDataTypeStr','single');
+put(s,'built-in/Mux','Mode and target',[246 65 255 152],'Inputs','2','DisplayOption','bar');
+place_port(s,'mode_target',339,109);
+wire(s,{'Mode 1 torque 2 speed 3 position/1','Mode and target/1'; ...
+    'Target step/1','Mode and target/2'; 'Mode and target/1','mode_target/1'});
+end
+
 
 function averaged_inverter(s)
 % Average each bridge leg over one PWM period, then remove neutral voltage.
@@ -136,7 +157,7 @@ rotor = stage(s, 'Rotor current and EMF', [559 172 714 341], ...
     {'current_ab','theta_e','speed'}, {'idq_a','back_emf_ab','torque_nm'}, '[0.86, 0.94, 0.87]');
 rotor_signals(rotor);
 mechanical = stage(s, 'Mechanical dynamics', [559 390 714 492], ...
-    {'electromagnetic_torque','load_torque'}, {'speed','theta_e'}, '[0.86, 0.94, 0.87]');
+    {'electromagnetic_torque','load_torque'}, {'speed','theta_e','position'}, '[0.86, 0.94, 0.87]');
 mechanical_dynamics(mechanical, ts);
 place_port(s, 'phase_voltage_v', 33, port_y(electrical, 'Inport', 1));
 place_port(s, 'load_torque_nm', 33, port_y(mechanical, 'Inport', 2));
@@ -145,6 +166,7 @@ place_port(s, 'theta_e_rad', 977, 125);
 place_port(s, 'current_dq_a', 977, port_y(rotor, 'Outport', 1));
 place_port(s, 'speed_rad_s', 977, 364);
 place_port(s, 'torque_nm', 977, 541);
+place_port(s, 'position_rad', 977, 593);
 wire(s, {'phase_voltage_v/1','Electrical dynamics/1'; ...
     'Electrical dynamics/2','Rotor current and EMF/1'; ...
     'load_torque_nm/1','Mechanical dynamics/2'; 'Rotor current and EMF/1','current_dq_a/1'});
@@ -153,6 +175,7 @@ send(s, 'emf_ab', 'Rotor current and EMF/2', 753, port_y(rotor, 'Outport', 2));
 send(s, 'torque', 'Rotor current and EMF/3', 753, port_y(rotor, 'Outport', 3));
 send(s, 'speed', 'Mechanical dynamics/1', 753, port_y(mechanical, 'Outport', 1));
 send(s, 'theta', 'Mechanical dynamics/2', 753, port_y(mechanical, 'Outport', 2));
+send(s, 'position', 'Mechanical dynamics/3', 753, port_y(mechanical, 'Outport', 3));
 at_input(s, 'built-in/From', 'Back EMF feedback', 'Electrical dynamics/2', 127, ...
     'GotoTag', 'emf_ab', 'ShowName', 'off');
 at_input(s, 'built-in/From', 'Rotor angle', 'Rotor current and EMF/2', 430, ...
@@ -166,6 +189,7 @@ at_input(s, 'built-in/From', 'Phase current output', 'current_bc_a/1', 861, ...
 at_input(s, 'built-in/From', 'Angle output', 'theta_e_rad/1', 861, 'GotoTag', 'theta', 'ShowName', 'off');
 at_input(s, 'built-in/From', 'Speed output', 'speed_rad_s/1', 861, 'GotoTag', 'speed', 'ShowName', 'off');
 at_input(s, 'built-in/From', 'Torque output', 'torque_nm/1', 861, 'GotoTag', 'torque', 'ShowName', 'off');
+at_input(s, 'built-in/From', 'Position output', 'position_rad/1', 861, 'GotoTag', 'position', 'ShowName', 'off');
 end
 
 function electrical_dynamics(s, ts)
@@ -228,16 +252,19 @@ gain(s, 'Viscous damping', [164 176 254 212], 'single(motor.damping_nms)');
 integrate(s, 'Rotor electrical angle', [536 136 642 175], 'motor.pole_pairs', ts);
 constant(s, 'Two pi', [559 220 616 246], 'single(2*pi)');
 put(s, 'built-in/Math', 'Wrap electrical angle', [696 147 768 202], 'Operator', 'mod');
+gain(s, 'Mechanical angle radians', [689 274 788 309], 'single(1/motor.pole_pairs)');
 send(s, 'omega_m', 'Mechanical speed/1', 508, 53);
 at_input(s, 'built-in/From', 'Mechanical speed feedback', 'Viscous damping/1', 47, ...
     'GotoTag', 'omega_m', 'ShowName', 'off');
 place_port(s, 'speed', 840, 97);
 place_port(s, 'theta_e', 840, 175);
+place_port(s, 'position', 840, 291);
 wire(s, {'electromagnetic_torque/1','Net torque/1'; 'load_torque/1','Net torque/2'; ...
     'Viscous damping/1','Net torque/3'; 'Net torque/1','Mechanical speed/1'; ...
     'Mechanical speed/1','speed/1'; 'Mechanical speed/1','Rotor electrical angle/1'; ...
     'Rotor electrical angle/1','Wrap electrical angle/1'; 'Two pi/1','Wrap electrical angle/2'; ...
-    'Wrap electrical angle/1','theta_e/1'});
+    'Rotor electrical angle/1','Mechanical angle radians/1'; ...
+    'Mechanical angle radians/1','position/1'; 'Wrap electrical angle/1','theta_e/1'});
 end
 
 function scope(s, name, position, tags, labels)

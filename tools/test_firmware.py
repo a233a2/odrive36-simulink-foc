@@ -13,17 +13,19 @@ from build import ROOT, compiler, simulink_sources
 
 def replay_header(out, fixture):
     data = json.loads(Path(fixture).read_text(encoding='utf-8'))
+    if data.get('abi_revision') != 2:
+        raise ValueError('Generate a three-loop ABI v2 replay fixture first')
     if data['count'] != len(data['inputs']) or data['count'] != len(data['outputs']):
         raise ValueError('Simulink replay count does not match its data')
     rows = []
     for inputs, outputs in zip(data['inputs'], data['outputs']):
-        if len(inputs) != 15 or len(outputs) != 9 or not all(map(math.isfinite, inputs + outputs)):
+        if len(inputs) != 31 or len(outputs) != 13 or not all(map(math.isfinite, inputs + outputs)):
             raise ValueError('Invalid shape or number in Simulink replay')
         u = ', '.join(f'{value:#.9g}f' for value in inputs)
         y = ', '.join(f'{value:#.9g}f' for value in outputs)
         rows.append(f'    {{{{{u}}}, {{{y}}}}},')
     out.write_text('/* Simulink normal-mode output for each input tick. */\n'
-                   'static const struct { float input[15], output[9]; } foc_replay[] = {\n'
+                   'static const struct { float input[31], output[13]; } foc_replay[] = {\n'
                    + '\n'.join(rows) + '\n};\n', encoding='ascii')
 
 
@@ -113,8 +115,9 @@ def run_tests(out, generated=None, fixture=None, *, project=ROOT, gcc=None,
         flags += ['-I' + str(out)]
     cmd = [str(gcc if gcc is not None else compiler()), '-mcpu=cortex-m4', '-mthumb', '-mfpu=fpv4-sp-d16', '-mfloat-abi=hard',
            '-O2', '-g', '-fno-math-errno', '-DSTM32F405xx', '-Iinclude', '-Ivendor/Device', '-Ivendor/CMSIS',
+           '-Ivendor/tinyusb/src',
            '-ffunction-sections', '-fdata-sections'] + flags + [
-           'src/foc.c', 'src/app.c', 'src/syscalls.c', 'tests/firmware_harness.c'] + sources + [
+           'src/foc.c', 'src/app.c', 'src/syscalls.c', 'src/usb_console.c', 'tests/firmware_harness.c'] + sources + [
            '-nostartfiles', '-Tstm32f405_flash.ld', '-Wl,--gc-sections', '-Wl,-u,run_tests',
            '--specs=nano.specs', '--specs=nosys.specs', '-u', '_printf_float', '-u', '_scanf_float',
            '-lm', '-lc', '-o', str(elf_path)]
@@ -129,7 +132,7 @@ def run_tests(out, generated=None, fixture=None, *, project=ROOT, gcc=None,
     (out / 'results.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     report(json.dumps(result, indent=2))
     if not result['passed']:
-        raise RuntimeError('ARM regression failed at line ' + str(failure))
+        raise RuntimeError('ARM regression failed at line ' + str(result['failure_line']))
     return result
 
 

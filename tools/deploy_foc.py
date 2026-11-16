@@ -189,7 +189,7 @@ def deploy(options, *, report=print, run=subprocess.run, on_phase=None):
         manifest = {
             'created_at': now.isoformat(), 'target': 'STM32F405RGT6',
             'load_address': '0x08000000', 'model': snapshot.name,
-            'controller_subsystem': 'odrive_foc/FOC Current Loop',
+            'controller_subsystem': 'odrive_foc/FOC Motion Controller',
             'codegen_model': 'odrive_foc_core.slx', 'compiler': version,
             'simulation': 'simulation.json', 'arm_regression': arm,
             'generated_sources': source_hashes,

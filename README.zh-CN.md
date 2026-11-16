@@ -5,24 +5,24 @@
 ![STM32F405](https://img.shields.io/badge/Target-STM32F405-176C60?style=flat-square)
 [![MIT](https://img.shields.io/badge/License-MIT-293B52?style=flat-square)](LICENSE)
 
-**把 Simulink 电流环变成 ODrive 3.6 上可编译的 FOC 控制程序。** 上位机一键提取子系统、生成 C、编译 STM32 固件，并把通过验证的源码同步到 EIDE。
+**把 Simulink 电流、速度和位置三环部署到 ODrive 3.6。** 上位机一键提取控制子系统、生成 C、编译 STM32 固件，并把通过验证的源码同步到 EIDE。
 
-[English](README.md) · [接口契约](docs/interfaces.md) · [部署指南](docs/deployment.md) · [版本发布](https://github.com/a233a2/odrive36-simulink-foc/releases)
+[English](README.md) · [三环接口](docs/three_loop.md) · [部署指南](docs/deployment.md) · [串口命令](docs/serial_control.md) · [版本发布](https://github.com/a233a2/odrive36-simulink-foc/releases)
 
-![FOC 电流环、平均逆变器、带负载输入的 PMSM 和三个示波器](docs/media/simulink-model.png)
+![三环 FOC、平均逆变器、带负载输入的 PMSM 和三个示波器](docs/media/simulink-model.png)
 
 ## 接口与部署
 
 ```mermaid
 flowchart LR
-    A["保存 SLX"] --> B["提取 FOC 电流环"]
+    A["保存 SLX"] --> B["提取 FOC Motion Controller"]
     B --> C["ERT 生成 C 和头文件"]
     C --> D["适配层与 ARM GCC"]
     D --> E["固件 ELF / HEX / BIN"]
     D --> F["同步源码到 EIDE"]
 ```
 
-板级固件以 **20 kHz** 通过适配层传入相电流、电角度和各轴状态，调用 `odrive_foc_core_step()` 后检查占空比并更新 PWM。编码器、速度和位置外环、故障关断由板级固件执行。
+控制子系统含 **20 kHz** 电流环，以及 **1 kHz** 速度 PI 和位置 P。板级固件负责 ADC、编码器、校准、每轴状态、PWM 和故障关断。
 
 ## 快速开始
 
@@ -35,7 +35,7 @@ python tools/install_test_deps.py
 python tools/deploy_gui.py
 ```
 
-打开 `simulink/odrive_foc.slx`，点 **Run** 查看电流阶跃和负载扰动。保存控制器改动后，在上位机点 **一键移植并构建**。生成源码同步到 `simulink/deployed/current/`。用 EIDE 打开 `CM_Odrive.code-workspace`，选择 `Simulink_FOC` 可以直接重编。
+打开 `simulink/odrive_foc.slx`，点 **Run** 查看 PMSM 和负载扰动。在模型工作区把 `demo_mode` 设为 1、2 或 3，分别运行力矩、速度或位置。保存改动后，在上位机点 **一键移植并构建**，生成源码同步到 `simulink/deployed/current/`。用 EIDE 打开 `CM_Odrive.code-workspace`，选择 `Simulink_FOC` 重编。
 
 <details>
 <summary>命令行操作</summary>
@@ -49,12 +49,18 @@ python tools/build.py --simulink
 
 </details>
 
+## USB 串口控制
+
+在上位机打开 **串口控制**，或用通用串口终端连接板载 USB 虚拟 COM 口，设为 115200 8N1。准备和校准后，可发送 `torque 0 0.001`（N·m）、`speed 0 1`（rad/s）或 `position 0 0.1`（rad）。也可用 `mode` 选模式，再用 `set` 更新目标。命令表包含校准、反馈、停机、心跳和 Kt 设置。[串口命令](docs/serial_control.md)
+
 <table>
   <tr>
     <td width="50%"><a href="docs/media/deploy-tool.png"><img src="docs/media/deploy-tool.png" alt="一键部署上位机"></a></td>
-    <td width="50%"><a href="docs/media/load-step.png"><img src="docs/media/load-step.png" alt="仿真电流、转速和负载转矩波形"></a></td>
+    <td width="50%"><a href="docs/media/serial-control.png"><img src="docs/media/serial-control.png" alt="USB 串口控制、模式选择、单轴反馈和指令终端"></a></td>
   </tr>
-  <tr><td>上位机部署界面</td><td>PMSM 电流跟踪与负载阶跃仿真</td></tr>
+  <tr><td>上位机部署界面</td><td>USB 串口控制</td></tr>
 </table>
 
-首发为开发预览。**96 组 Simulink 向量、3,090 项 ARM 检查**通过，EIDE 的 `Simulink_FOC` 和 `Debug` 均已重编通过。实机时序与闭环运行仍在验证。原创模型和源码采用 [MIT](LICENSE)，第三方组件沿用[原许可证](THIRD_PARTY_NOTICES.md)。
+三种模式均通过 1.4 mN·m 负载阶跃仿真。生成版通过 **192 组 Simulink 向量、5,057 项 ARM 检查**，EIDE 的 `Simulink_FOC` 和 `Debug` 均已重编。实机时序和闭环运行待验证。[仿真曲线](docs/media/motion-modes.png)
+
+原创模型和源码采用 MIT，第三方组件沿用各自许可。[MIT](LICENSE) · [第三方许可](THIRD_PARTY_NOTICES.md)

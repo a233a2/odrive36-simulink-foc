@@ -33,37 +33,63 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index,uint16_t langid) {
     return descriptor;
 }
 /* 不依赖VBUS检测判断掉线，命令心跳超时独立停止运动。 */
-void tud_umount_cb(void) {
+static char line[96];
+static unsigned length;
+static bool invalid_line;
+
+static void reset_line(void) {
+    length=0;
+    invalid_line=false;
+}
+
+static void serial_disconnected(void) {
+    reset_line();
     if (g_app.motor[0].state!=IDLE||g_app.motor[1].state!=IDLE) app_fault(FAULT_TIMEOUT);
 }
+
+void tud_umount_cb(void) { serial_disconnected(); }
+
 void tud_suspend_cb(bool remote_wakeup_en) {
     (void)remote_wakeup_en;
-    if (g_app.motor[0].state!=IDLE||g_app.motor[1].state!=IDLE) app_fault(FAULT_TIMEOUT);
+    serial_disconnected();
 }
+
+void tud_cdc_line_state_cb(uint8_t interface, bool dtr, bool rts) {
+    (void)interface;
+    (void)rts;
+    static bool was_open;
+    if (was_open && !dtr) serial_disconnected();
+    was_open=dtr;
+}
+
 void console_init(void) { board_usb_init(); }
+
 void console_poll(void) {
-    static char line[96],reply[768];
-    static unsigned length=0;
-    static bool overflow=false;
+    static char reply[768];
     static bool ever_mounted=false;
     tud_task();
     if (tud_mounted()) ever_mounted=true;
-    /* 只用于首次启动枚举失败的联调恢复；曾枚举成功后的掉线仍由独立心跳停机。 */
     if (USB_BOOT_DFU_TIMEOUT_MS&&!ever_mounted&&millis()>USB_BOOT_DFU_TIMEOUT_MS&&!g_app.prepared)
         board_request_dfu();
-    /* 每轮最多处理32字节，限制USB输入占用，给1kHz编码器任务留出时间。 */
+    /* Bound each pass so serial input does not monopolize the encoder polling task. */
     for (unsigned budget=0;budget<32 && tud_cdc_available();budget++) {
-        char ch=(char)tud_cdc_read_char();
+        unsigned char ch=(unsigned char)tud_cdc_read_char();
         if (ch=='\r'||ch=='\n') {
-            if (length||overflow) {
-                if (!overflow) { line[length]=0; (void)app_command(line,reply,sizeof(reply)); }
-                else strcpy(reply,"ERR line too long\r\n");
-                if (tud_cdc_connected()) tud_cdc_write_str(reply); /* 满时允许丢遥测，永不阻塞电流环。 */
-                length=0; overflow=false;
+            if (length||invalid_line) {
+                reply[0]=0;
+                if (invalid_line) strcpy(reply,"ERR invalid ASCII line or line too long\r\n");
+                else { line[length]=0; (void)app_command(line,reply,sizeof(reply)); }
+                size_t size=strlen(reply);
+                /* Keep replies whole and execute STOP even when the host stops reading. */
+                if (size && tud_cdc_write_available()>=size) (void)tud_cdc_write(reply,size);
+                reset_line();
             }
-        } else if ((ch=='\b'||ch==127)&&length) length--;
-        else if (ch>=32&&ch<127) {
-            if (length<sizeof(line)-1) line[length++]=ch; else overflow=true;
+        } else if (ch=='\b'||ch==127) {
+            if (length) length--;
+        } else if ((ch>=32&&ch<127)||ch=='\t') {
+            if (length<sizeof(line)-1) line[length++]=(char)ch; else invalid_line=true;
+        } else {
+            invalid_line=true;
         }
     }
     tud_cdc_write_flush();

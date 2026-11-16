@@ -29,6 +29,47 @@ static bool active(MotorState s) { return s!=IDLE; }
 static void reset_pi(Motor *m) {
     m->d_pi.integral=m->q_pi.integral=m->velocity_pi.integral=0;
     m->iq_command=m->velocity_ramp=0;
+    m->id=m->iq=0;
+    m->outer_ticks=0;
+}
+
+static const char *mode_name(FocMode mode) {
+    switch (mode) {
+        case FOC_TORQUE: return "torque";
+        case FOC_SPEED: return "speed";
+        case FOC_POSITION: return "position";
+        default: return "align";
+    }
+}
+
+static FocMode parse_mode(const char *name) {
+    if (!strcmp(name,"torque")) return FOC_TORQUE;
+    if (!strcmp(name,"speed")) return FOC_SPEED;
+    if (!strcmp(name,"position")) return FOC_POSITION;
+    return FOC_ALIGN;
+}
+
+static MotorState running_state(FocMode mode) {
+    switch (mode) {
+        case FOC_TORQUE: return RUN_TORQUE;
+        case FOC_SPEED: return RUN_VELOCITY;
+        case FOC_POSITION: return RUN_POSITION;
+        default: return IDLE;
+    }
+}
+
+static float target_limit(FocMode mode, float kt) {
+    if (mode==FOC_TORQUE) return CURRENT_LIMIT_A*kt;
+    if (mode==FOC_SPEED) return VELOCITY_LIMIT_RAD_S;
+    return POSITION_LIMIT_RAD;
+}
+
+static void idle_axis(unsigned axis, Motor *m) {
+    board_pwm_enable(axis,false);
+    reset_pi(m);
+    m->state=IDLE;
+    m->target=0;
+    m->state_ticks=0;
 }
 void app_init(void) {
     memset((void *)&g_app,0,sizeof(g_app));
@@ -37,6 +78,8 @@ void app_init(void) {
     for (unsigned i=0;i<2;i++) {
         Motor *m=(Motor *)&g_app.motor[i];
         m->direction=1;
+        m->mode=FOC_TORQUE;
+        m->torque_constant_nm_a=TORQUE_CONSTANT_NM_A;
         /* Kp=L*w、Ki=R*w；300Hz用于缩短制动延迟，R/L仍须实机辨识。 */
         m->d_pi.kp=m->q_pi.kp=MOTOR_PHASE_L*TWO_PI_F*CURRENT_BANDWIDTH_HZ;
         m->d_pi.ki=m->q_pi.ki=MOTOR_PHASE_R*TWO_PI_F*CURRENT_BANDWIDTH_HZ;
@@ -167,32 +210,34 @@ void app_adc_isr(const uint16_t raw[4]) {
             /* 空载2208转子惯量小：用1s斜坡建立对齐磁场，避免给Id阶跃时快速摆动。 */
             id_target*=limitf((float)m->state_ticks/CAL_CURRENT_RAMP_TICKS,0.0f,1.0f);
         }
-        if (!calibration && ++m->outer_ticks>=20u) {
-            m->outer_ticks=0; /* 速度/位置外环1kHz，电流内环20kHz。 */
-            float desired_iq;
-            if (m->state==RUN_CURRENT) desired_iq=m->target;
-            else {
-                float requested=m->target;
-                if (m->state==RUN_POSITION) requested=limitf(POSITION_KP*(m->target-m->position),-VELOCITY_LIMIT_RAD_S,VELOCITY_LIMIT_RAD_S);
-                m->velocity_ramp=approach(m->velocity_ramp,requested,ACCEL_LIMIT_RAD_S2*0.001f);
-                desired_iq=pi_step(&m->velocity_pi,m->velocity_ramp-m->velocity,0.001f,CURRENT_LIMIT_A);
-            }
-            /* 直接电流模式才限制Iq指令斜率。速度/位置模式已有速度目标加速度限制，
-             * 速度PI必须能立即降低/反向转矩；再次限斜率会延迟小惯量转子的制动。 */
-            m->iq_command=m->state==RUN_CURRENT?
-                approach(m->iq_command,desired_iq,IQ_SLEW_A_PER_S*0.001f):desired_iq;
-        }
-        float iq_target=calibration?0:limitf(m->iq_command,-CURRENT_LIMIT_A,CURRENT_LIMIT_A);
-        /* 传入同一轴的物理量和状态。只有数值检查通过才更新 PWM 预装载寄存器。 */
-        FocCurrentInput input={.ib_a=ib,.ic_a=ic,.theta_e_rad=theta,
-            .vbus_v=g_app.bus_voltage,.phase_voltage_limit_v=PHASE_VOLTAGE_LIMIT_V,
-            .reference_a={id_target,iq_target}};
+        /* Pass only the selected axis's samples, gains, and three-loop state. */
+        FocMotionInput input={
+            .current={.ib_a=ib,.ic_a=ic,.theta_e_rad=theta,
+                .vbus_v=g_app.bus_voltage,.phase_voltage_limit_v=PHASE_VOLTAGE_LIMIT_V,
+                .reference_a={id_target,0.0f}},
+            .mode=calibration?FOC_ALIGN:m->mode,
+            .target=m->target,.position_rad=m->position,.speed_rad_s=m->velocity,
+            .torque_constant_nm_a=m->torque_constant_nm_a,
+            .current_kp={m->d_pi.kp,m->q_pi.kp},.current_ki={m->d_pi.ki,m->q_pi.ki},
+            .speed_kp=m->velocity_pi.kp,.speed_ki=m->velocity_pi.ki,.position_kp=POSITION_KP
+        };
+        FocMotionState state={
+            .current_feedback_a={m->id,m->iq},.current_integral_v={m->d_pi.integral,m->q_pi.integral},
+            .speed_integral_a=m->velocity_pi.integral,.speed_reference_rad_s=m->velocity_ramp,
+            .iq_reference_a=m->iq_command,.motion_tick=m->outer_ticks
+        };
         FocCurrentOutput output;
-        if (!foc_current_step(&input,(Dq){m->id,m->iq},&m->d_pi,&m->q_pi,&output)) {
+        if (!foc_motion_step(&input,&state,&output)) {
             app_fault(FAULT_NUMERIC);
             return;
         }
         if (g_app.fault) return; /* nFAULT can preempt the current loop above. */
+        m->d_pi.integral=state.current_integral_v.d;
+        m->q_pi.integral=state.current_integral_v.q;
+        m->velocity_pi.integral=state.speed_integral_a;
+        m->velocity_ramp=state.speed_reference_rad_s;
+        m->iq_command=state.iq_reference_a;
+        m->outer_ticks=state.motion_tick;
         m->id=output.feedback_a.d; m->iq=output.feedback_a.q;
         m->voltage_d=output.voltage_v.d; m->voltage_q=output.voltage_v.q;
         board_pwm_set(a,output.duty);
@@ -207,10 +252,20 @@ bool app_command(const char *line,char *reply,unsigned capacity) {
     int fields=sscanf(line,"%23s %23s %31s %31s %7s",command,axis_text,value_text,extra,trailing);
     if (fields<1) return false;
     bool global=!strcmp(command,"help")||!strcmp(command,"status")||!strcmp(command,"encoder")||
-                !strcmp(command,"ping")||!strcmp(command,"prepare")||!strcmp(command,"clear")||!strcmp(command,"dfu");
+                !strcmp(command,"ping")||!strcmp(command,"prepare")||!strcmp(command,"clear")||
+                !strcmp(command,"stop")||!strcmp(command,"info")||!strcmp(command,"dfu");
     if (global&&fields!=1) { snprintf(reply,capacity,"ERR unexpected argument\r\n"); return false; }
     if (!strcmp(command,"help")) {
-        snprintf(reply,capacity,"help | status | encoder | scan <0|1> | ping | prepare | cal <0|1> | current <axis> <A> | velocity <axis> <rad/s> | position <axis> <rad> | tune <axis> <speed_Kp> <speed_Ki> | trace <axis> [page] (IDLE only) | idle <axis> | stop | clear | dfu\r\n");
+        snprintf(reply,capacity,"info | help | status | feedback <axis> | limits <axis> | encoder | ping\r\n"
+            "prepare | cal <axis> | mode <axis> [torque|speed|position] | set <axis> <target>\r\n"
+            "torque <axis> <Nm> | speed <axis> <rad/s> | position <axis> <rad> | idle <axis> | stop\r\n"
+            "kt <axis> <Nm/A> | zero <axis> | tune <axis> <Kp> <Ki> | clear\r\n"
+            "scan <axis> | trace <axis> [page] | dfu\r\n");
+        return true;
+    }
+    if (!strcmp(command,"info")) {
+        snprintf(reply,capacity,"OK info protocol=2 fw=" CM_FIRMWARE_VERSION
+                 " transport=usb-cdc axes=2 timeout_ms=%u\r\n",COMMAND_TIMEOUT_MS);
         return true;
     }
     if (!strcmp(command,"dfu")) { board_shutdown();board_request_dfu(); }
@@ -218,7 +273,10 @@ bool app_command(const char *line,char *reply,unsigned capacity) {
         uint32_t p=__get_PRIMASK(); __disable_irq();
         board_shutdown();
         if (!strcmp(command,"clear")) { uint32_t boot=g_app.boot_flags;app_init();g_app.boot_flags=boot; }
-        else { g_app.prepared=false; g_app.offsets_ready=false; for (unsigned a=0;a<2;a++) g_app.motor[a].state=IDLE; }
+        else {
+            g_app.prepared=false; g_app.offsets_ready=false;
+            for (unsigned a=0;a<2;a++) idle_axis(a,(Motor *)&g_app.motor[a]);
+        }
         __set_PRIMASK(p);
         snprintf(reply,capacity,"OK %s; gates OFF\r\n",command); return true;
     }
@@ -274,6 +332,40 @@ bool app_command(const char *line,char *reply,unsigned capacity) {
         }
         return true;
     }
+    if (fields>=2) {
+        if (strcmp(axis_text,"0") && strcmp(axis_text,"1")) {
+            snprintf(reply,capacity,"ERR axis must be 0 or 1\r\n");return false;
+        }
+        axis=(unsigned)(axis_text[0]-'0');
+    }
+    volatile Motor *telemetry=&g_app.motor[axis];
+    if (fields==2 && !strcmp(command,"feedback")) {
+        snprintf(reply,capacity,
+            "OK feedback axis=%u mode=%s state=%u cal=%u ready=%u offset=%u fault=0x%lx "
+            "target=%.6g position_rad=%.6g speed_rad_s=%.6g iq_a=%.6g iq_ref_a=%.6g torque_est_nm=%.6g\r\n",
+            axis,mode_name(telemetry->mode),telemetry->state,telemetry->calibrated,g_app.prepared,
+            g_app.offsets_ready,(unsigned long)g_app.fault,(double)telemetry->target,
+            (double)telemetry->position,(double)telemetry->velocity,(double)telemetry->iq,
+            (double)telemetry->iq_command,(double)(telemetry->iq*telemetry->torque_constant_nm_a));
+        return true;
+    }
+    if (fields==2 && !strcmp(command,"limits")) {
+        snprintf(reply,capacity,"OK limits axis=%u torque_nm=%.6g speed_rad_s=%.6g position_rad=%.6g kt_nm_per_a=%.6g\r\n",
+            axis,(double)target_limit(FOC_TORQUE,telemetry->torque_constant_nm_a),
+            (double)VELOCITY_LIMIT_RAD_S,(double)POSITION_LIMIT_RAD,(double)telemetry->torque_constant_nm_a);
+        return true;
+    }
+    if (fields==2 && !strcmp(command,"mode")) {
+        snprintf(reply,capacity,"OK mode axis=%u mode=%s state=%u\r\n",axis,mode_name(telemetry->mode),telemetry->state);
+        return true;
+    }
+    if (fields==2 && !strcmp(command,"idle")) {
+        uint32_t p=__get_PRIMASK(); __disable_irq();
+        idle_axis(axis,(Motor *)&g_app.motor[axis]);
+        __set_PRIMASK(p);
+        snprintf(reply,capacity,"OK idle axis=%u\r\n",axis);
+        return true;
+    }
     if (g_app.fault) { snprintf(reply,capacity,"ERR fault=0x%lx; inspect then clear\r\n",(unsigned long)g_app.fault); return false; }
     if (!strcmp(command,"prepare")&&fields==1) {
         if (g_app.prepared) { snprintf(reply,capacity,"ERR already prepared; stop before reinitializing\r\n"); return false; }
@@ -291,10 +383,48 @@ bool app_command(const char *line,char *reply,unsigned capacity) {
         snprintf(reply,capacity,"OK amplifiers enabled; PWM OFF; collecting offsets ~103ms\r\n"); return true;
     }
     if (fields<2) { snprintf(reply,capacity,"ERR unknown command/axis; help\r\n"); return false; }
-    char *end;
-    unsigned long parsed_axis=strtoul(axis_text,&end,10);
-    if (*end||parsed_axis>1u) { snprintf(reply,capacity,"ERR axis must be 0 or 1\r\n"); return false; }
-    axis=(unsigned)parsed_axis;
+    if (!strcmp(command,"mode")) {
+        FocMode selected=parse_mode(value_text);
+        if (fields!=3 || selected==FOC_ALIGN) {
+            snprintf(reply,capacity,"ERR mode axis torque|speed|position\r\n");return false;
+        }
+        uint32_t p=__get_PRIMASK(); __disable_irq();
+        Motor *m=(Motor *)&g_app.motor[axis];
+        idle_axis(axis,m);
+        m->mode=selected;
+        __set_PRIMASK(p);
+        snprintf(reply,capacity,"OK mode axis=%u mode=%s state=0\r\n",axis,mode_name(selected));
+        return true;
+    }
+    if (!strcmp(command,"kt")) {
+        char *end;
+        float kt=strtof(value_text,&end);
+        if (fields!=3||end==value_text||*end||!(kt>=TORQUE_CONSTANT_MIN&&kt<=TORQUE_CONSTANT_MAX)) {
+            snprintf(reply,capacity,"ERR kt axis Nm/A in [0.0001,10]\r\n");return false;
+        }
+        uint32_t p=__get_PRIMASK(); __disable_irq();
+        if (active(g_app.motor[axis].state)) {
+            __set_PRIMASK(p);snprintf(reply,capacity,"ERR idle axis before setting kt\r\n");return false;
+        }
+        g_app.motor[axis].torque_constant_nm_a=kt;
+        __set_PRIMASK(p);
+        snprintf(reply,capacity,"OK kt axis=%u kt_nm_per_a=%.6g\r\n",axis,(double)kt);
+        return true;
+    }
+    if (fields==2 && !strcmp(command,"zero")) {
+        uint32_t p=__get_PRIMASK(); __disable_irq();
+        Motor *m=(Motor *)&g_app.motor[axis];
+        EncoderReading encoder=g_encoder[axis];
+        if (g_app.fault||active(m->state)||!m->calibrated||!encoder.valid||
+            !isfinite(encoder.angle)||(uint32_t)(micros()-encoder.timestamp_us)>ENCODER_STALE_US) {
+            __set_PRIMASK(p);snprintf(reply,capacity,"ERR zero requires an idle calibrated axis and fresh encoder\r\n");return false;
+        }
+        m->mechanical_zero=encoder.angle;
+        m->position=0.0f;
+        __set_PRIMASK(p);
+        snprintf(reply,capacity,"OK zero axis=%u position_rad=0\r\n",axis);
+        return true;
+    }
     if (!strcmp(command,"tune")) {
         /* 只改空闲轴速度PI，不使能功率；范围限于本次小电机调试，重启/clear恢复默认。 */
         char *end_kp,*end_ki;
@@ -314,17 +444,24 @@ bool app_command(const char *line,char *reply,unsigned capacity) {
         if (g_app.prepared) { snprintf(reply,capacity,"ERR stop before I2C scan\r\n");return false; }
         encoder_scan(axis,reply,capacity);return true;
     }
-    if (fields>=3) {
-        value=strtof(value_text,&end);
-        if (*end||!isfinite(value)) { snprintf(reply,capacity,"ERR invalid number\r\n"); return false; }
+    bool cal=!strcmp(command,"cal");
+    bool current_units=!strcmp(command,"current");
+    FocMode selected=parse_mode(command);
+    if (current_units) selected=FOC_TORQUE; /* Compatibility for current <axis> <A>. */
+    if (!strcmp(command,"velocity")) selected=FOC_SPEED;
+    if (!strcmp(command,"set")) selected=telemetry->mode;
+    if ((cal && fields!=2)||(!cal&&(selected==FOC_ALIGN||fields!=3))) {
+        snprintf(reply,capacity,"ERR syntax; help\r\n");return false;
     }
-    bool cal=!strcmp(command,"cal"),idle=!strcmp(command,"idle");
-    MotorState desired=IDLE;
-    if (!strcmp(command,"current")) desired=RUN_CURRENT;
-    if (!strcmp(command,"velocity")) desired=RUN_VELOCITY;
-    if (!strcmp(command,"position")) desired=RUN_POSITION;
-    if ((!cal&&!idle&&desired==IDLE)||(cal&&fields!=2)||(idle&&fields!=2)||
-        (desired!=IDLE&&(fields!=3||!isfinite(value)))) { snprintf(reply,capacity,"ERR syntax; help\r\n"); return false; }
+    if (!cal) {
+        char *end;
+        value=strtof(value_text,&end);
+        if (end==value_text||*end||!isfinite(value)) { snprintf(reply,capacity,"ERR invalid number\r\n");return false; }
+        float kt=telemetry->torque_constant_nm_a;
+        if (current_units) value*=kt;
+        float maximum=target_limit(selected,kt);
+        if (fabsf(value)>maximum) { snprintf(reply,capacity,"ERR target exceeds %.6g\r\n",(double)maximum);return false; }
+    }
     if (!g_app.prepared||!g_app.offsets_ready) { snprintf(reply,capacity,"ERR prepare and wait for offset=1\r\n"); return false; }
     if (!g_encoder[axis].valid||(uint32_t)(micros()-g_encoder[axis].timestamp_us)>ENCODER_STALE_US) {
         snprintf(reply,capacity,"ERR encoder invalid/stale\r\n"); return false;
@@ -332,25 +469,25 @@ bool app_command(const char *line,char *reply,unsigned capacity) {
     if (cal&&(active(g_app.motor[0].state)||active(g_app.motor[1].state))) {
         snprintf(reply,capacity,"ERR idle both motors before calibration\r\n"); return false;
     }
-    if (desired!=IDLE && !g_app.motor[axis].calibrated) { snprintf(reply,capacity,"ERR cal axis first\r\n"); return false; }
-    float maximum=desired==RUN_CURRENT?CURRENT_LIMIT_A:desired==RUN_VELOCITY?VELOCITY_LIMIT_RAD_S:100.0f;
-    if (desired!=IDLE&&fabsf(value)>maximum) { snprintf(reply,capacity,"ERR target exceeds %.3f\r\n",(double)maximum); return false; }
+    if (!cal && !g_app.motor[axis].calibrated) { snprintf(reply,capacity,"ERR cal axis first\r\n"); return false; }
     uint32_t p=__get_PRIMASK(); __disable_irq();
     /* 之前的检查之后仍可能有中断故障，最后一次检查与使能必须原子完成。 */
     if (g_app.fault||!g_app.prepared) { __set_PRIMASK(p); snprintf(reply,capacity,"ERR fault during command\r\n"); return false; }
     Motor *m=(Motor *)&g_app.motor[axis];
-    if (desired!=IDLE && m->state==desired) {
+    MotorState desired=cal?CAL_ALIGN:running_state(selected);
+    if (!cal && m->state==desired) {
         /* 同一运行模式只更新目标，保留PI和斜坡，连续指令不会反复关PWM或重置积分。 */
         m->target=value;g_app.last_command_ms=millis();__set_PRIMASK(p);
-        snprintf(reply,capacity,"OK target axis=%u value=%.4f\r\n",axis,(double)value);return true;
+        snprintf(reply,capacity,"OK target axis=%u mode=%s target=%.6g\r\n",axis,mode_name(selected),(double)value);return true;
     }
-    board_pwm_enable(axis,false); reset_pi(m); m->outer_ticks=0; m->state_ticks=0;
-    m->target=value; m->state=cal?CAL_ALIGN:desired;
+    idle_axis(axis,m);
+    m->target=value; m->state=desired;
     if (cal) m->calibrated=false;
+    else m->mode=selected;
     g_app.last_command_ms=millis();
     board_pwm_set(axis,(PhaseDuty){0.5f,0.5f,0.5f});
-    if (!idle) board_pwm_enable(axis,true);
+    board_pwm_enable(axis,true);
     __set_PRIMASK(p);
-    snprintf(reply,capacity,"OK %s axis=%u target=%.4f; ping required every <2s\r\n",command,axis,(double)value);
+    snprintf(reply,capacity,"OK %s axis=%u mode=%s target=%.6g\r\n",command,axis,mode_name(selected),(double)value);
     return true;
 }

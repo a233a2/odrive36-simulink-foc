@@ -1,4 +1,4 @@
-"""Install isolated emulator test wheels in tmp, validating PyPI sha256."""
+"""Install the isolated ARM replay and serial tools' dependency wheels."""
 import hashlib
 import io
 import json
@@ -7,7 +7,9 @@ import urllib.request
 import zipfile
 
 dest=Path(__file__).resolve().parents[1]/'tmp/testdeps'
-for package,version,ending in [('unicorn','2.1.4','win_amd64.whl'),('pyelftools','0.32','none-any.whl')]:
+for package,version,ending in [
+        ('unicorn','2.1.4','win_amd64.whl'),('pyelftools','0.32','none-any.whl'),
+        ('pyserial','3.5','none-any.whl')]:
     with urllib.request.urlopen('https://pypi.org/pypi/{}/{}/json'.format(package,version),timeout=30) as response:
         data=json.load(response)
     item=next(x for x in data['urls'] if x['filename'].endswith(ending))

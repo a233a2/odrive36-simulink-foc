@@ -21,6 +21,26 @@ typedef struct {
     PhaseDuty duty;
 } FocCurrentOutput;
 
+/* The first mode is reserved for the board's electrical calibration. */
+typedef enum { FOC_ALIGN = 0, FOC_TORQUE, FOC_SPEED, FOC_POSITION } FocMode;
+
+typedef struct {
+    FocCurrentInput current;
+    FocMode mode;
+    float target;                         /* N m, mechanical rad/s, or mechanical rad */
+    float position_rad, speed_rad_s;
+    float torque_constant_nm_a;
+    Dq current_kp, current_ki;
+    float speed_kp, speed_ki, position_kp;
+} FocMotionInput;
+
+/* All state belongs to one axis. The caller resets it when changing modes. */
+typedef struct {
+    Dq current_feedback_a, current_integral_v;
+    float speed_integral_a, speed_reference_rad_s, iq_reference_a;
+    uint32_t motion_tick;
+} FocMotionState;
+
 /* Initialize before enabling ADC interrupts. */
 void foc_current_init(void);
 
@@ -28,6 +48,8 @@ void foc_current_init(void);
  * numeric fault. The caller must shut down the power stage before returning. */
 bool foc_current_step(const FocCurrentInput *input, Dq previous_feedback_a,
                       PiController *d_pi, PiController *q_pi, FocCurrentOutput *output);
+bool foc_motion_inputs_valid(const FocMotionInput *input, const FocMotionState *state);
+bool foc_motion_step(const FocMotionInput *input, FocMotionState *state, FocCurrentOutput *output);
 
 float limitf(float x, float low, float high);
 float wrap_pi(float x);

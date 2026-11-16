@@ -3,10 +3,10 @@ import argparse
 from datetime import datetime,timedelta,timezone
 from pathlib import Path
 import time
-import serial
-from serial.tools import list_ports
+from serial_control import MOTION_COMMANDS, device_ports, load_pyserial
 
 def main():
+    serial,_=load_pyserial()
     p=argparse.ArgumentParser()
     p.add_argument('--port')
     p.add_argument('--command',action='append',default=[])
@@ -17,7 +17,7 @@ def main():
     args=p.parse_args()
     if args.watch<0 or args.period<0.05:
         p.error('watch must be nonnegative and period at least 0.05 seconds')
-    candidates=[x.device for x in list_ports.comports() if x.vid==0xcafe and x.pid==0x4011]
+    candidates=device_ports()
     if args.port:
         if args.port not in candidates:
             raise SystemExit('Selected port is not CM firmware (VID CAFE / PID 4011)')
@@ -27,7 +27,7 @@ def main():
     else:
         raise SystemExit('Expected one CM firmware port, found '+repr(candidates))
     commands=args.command or ['status','encoder']
-    motion_axes={x.split()[1] for x in commands if x.split()[0] in ['cal','current','velocity','position'] and len(x.split())>=2}
+    motion_axes={x.split()[1] for x in commands if len(x.split())>=2 and x.split()[0] in MOTION_COMMANDS}
     records=[]
     def record(value):
         stamp=datetime.now(timezone(timedelta(hours=8))).isoformat(timespec='milliseconds')

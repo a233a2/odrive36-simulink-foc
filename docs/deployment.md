@@ -4,9 +4,9 @@ The Windows desktop tool and command-line entry both use `simulink/build_odrive_
 
 ## Build from a saved model
 
-1. Open `simulink/odrive_foc.slx` and run the simulation to inspect current tracking or change the load step. Save your controller edits.
+1. Open `simulink/odrive_foc.slx` and run the PMSM simulation. Use the model workspace variables `demo_mode`, `demo_target`, and `demo_load_nm` to choose a mode, command and disturbance. Save your controller edits.
 2. Open `python tools/deploy_gui.py` and select the project and the saved model. Set MATLAB R2024b and `arm-none-eabi-gcc.exe` in the toolchain dialog if the tool needs help finding them. The CLI also accepts `--matlab` and `--gcc`.
-3. Choose **移植并构建** and click **一键移植并构建**. The tool validates and exports only `FOC Current Loop`, compiles the board adapter and firmware, and executes the ARM replay when enabled. The default operation runs on the PC.
+3. Choose **移植并构建** and click **一键移植并构建**. The tool validates and exports only `FOC Motion Controller`, compiles the board adapter and firmware, and executes the ARM replay when enabled. The default operation runs on the PC.
 
 The following PowerShell commands run the same deployment. For nonstandard installations, set `MATLAB_ROOT` to the MATLAB installation root and `ARM_GCC_BIN` to the Arm GNU Toolchain `bin` directory.
 
@@ -28,7 +28,11 @@ addpath('simulink')
 verify_odrive_motor_demo(fullfile(pwd, 'simulink', 'odrive_foc.slx'), fullfile(pwd, 'build', 'demo'))
 ```
 
-The demo applies a 0.12 A q-axis command and a 1.4 mN·m opposing load step. The curves in the README are from the averaged inverter and PMSM simulation. The ARM harness uses stub peripherals to test the application and compare the generated controller against Simulink vectors.
+The demo runs torque, speed and position tracking with a 1.4 mN·m opposing load step in each mode. It writes `motion_modes.png` and `motion_modes.json`. The curves in the README are from the averaged inverter and PMSM simulation. The ARM harness uses stub peripherals to exercise the USB protocol and compare the generated controller against Simulink vectors.
+
+## USB serial control
+
+Open **串口控制** in the deployment window, or start `python tools/control_gui.py`. Choose the board's virtual COM port and connect. Before commanding motion, use **准备驱动** and **校准所选轴** to prepare the drive and align the selected motor. A generic serial terminal can use the same ASCII protocol. [Serial reference 中文](serial_control.md)
 
 ## Package the Windows EXE
 
@@ -52,7 +56,7 @@ try {
 & $guiPython tools/package_deploy_gui.py --replay-python $replayPython
 ```
 
-The packaging script tests desktop startup and runs a Thumb instruction before publishing `build/Tools/ODriveFOC.exe`. The EXE calls the installed MATLAB and ARM toolchain.
+The packaging script tests desktop startup, the bundled serial transport and a Thumb instruction before writing `build/Tools/ODriveFOC.exe`. Deployment calls the installed MATLAB and ARM toolchain. The serial control window runs with the bundled runtime.
 
 ## Development preview scope
 

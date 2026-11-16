@@ -70,10 +70,7 @@ PhaseDuty inverse_park_svm_trig(float vd,float vq,AngleTrig angle,float bus) {
                        limitf(0.5f + (cc-common)*inv, 0.10f, 0.80f)};
 }
 
-#ifndef CM_USE_SIMULINK_FOC
-void foc_current_init(void) {}
-
-/* Native current loop used by the existing firmware build. */
+/* The native current loop also serves as the reference for independent tests. */
 bool foc_current_step(const FocCurrentInput *input, Dq previous_feedback_a,
                       PiController *d_pi, PiController *q_pi, FocCurrentOutput *output) {
     if (!isfinite(input->theta_e_rad)) return false;
@@ -99,6 +96,67 @@ bool foc_current_step(const FocCurrentInput *input, Dq previous_feedback_a,
     q_pi->integral = next_q.integral;
     *output = (FocCurrentOutput){feedback, {vd, vq},
         inverse_park_svm_trig(vd, vq, angle, input->vbus_v)};
+    return true;
+}
+
+bool foc_motion_inputs_valid(const FocMotionInput *input, const FocMotionState *state) {
+    const FocCurrentInput *c = &input->current;
+    return isfinite(c->ib_a) && isfinite(c->ic_a) && isfinite(c->theta_e_rad) &&
+           isfinite(c->vbus_v) && c->vbus_v >= 1.0f &&
+           isfinite(c->phase_voltage_limit_v) && c->phase_voltage_limit_v > 0.0f &&
+           isfinite(c->reference_a.d) && isfinite(c->reference_a.q) &&
+           (unsigned)input->mode <= FOC_POSITION && isfinite(input->target) &&
+           isfinite(input->position_rad) && isfinite(input->speed_rad_s) &&
+           input->torque_constant_nm_a >= TORQUE_CONSTANT_MIN &&
+           input->torque_constant_nm_a <= TORQUE_CONSTANT_MAX &&
+           isfinite(input->current_kp.d) && isfinite(input->current_kp.q) &&
+           isfinite(input->current_ki.d) && isfinite(input->current_ki.q) &&
+           isfinite(input->speed_kp) && isfinite(input->speed_ki) && isfinite(input->position_kp) &&
+           isfinite(state->current_feedback_a.d) && isfinite(state->current_feedback_a.q) &&
+           isfinite(state->current_integral_v.d) && isfinite(state->current_integral_v.q) &&
+           isfinite(state->speed_integral_a) && isfinite(state->speed_reference_rad_s) &&
+           isfinite(state->iq_reference_a) && state->motion_tick < MOTION_DIVIDER;
+}
+
+#ifndef CM_USE_SIMULINK_FOC
+void foc_current_init(void) {}
+
+static void update_motion_reference(const FocMotionInput *input, FocMotionState *next) {
+    if (input->mode == FOC_ALIGN) {
+        next->speed_integral_a = next->speed_reference_rad_s = next->iq_reference_a = 0.0f;
+        next->motion_tick = 0u;
+        return;
+    }
+    if (++next->motion_tick < MOTION_DIVIDER) return;
+    next->motion_tick = 0u;
+    if (input->mode == FOC_TORQUE) {
+        float iq = limitf(input->target / input->torque_constant_nm_a, -CURRENT_LIMIT_A, CURRENT_LIMIT_A);
+        next->iq_reference_a = approach(next->iq_reference_a, iq, IQ_SLEW_A_PER_S * MOTION_DT);
+        next->speed_integral_a = next->speed_reference_rad_s = 0.0f;
+        return;
+    }
+    float requested = input->target;
+    if (input->mode == FOC_POSITION) requested = input->position_kp * (requested - input->position_rad);
+    requested = limitf(requested, -VELOCITY_LIMIT_RAD_S, VELOCITY_LIMIT_RAD_S);
+    next->speed_reference_rad_s = approach(next->speed_reference_rad_s, requested, ACCEL_LIMIT_RAD_S2 * MOTION_DT);
+    PiController speed = {input->speed_kp, input->speed_ki, next->speed_integral_a};
+    next->iq_reference_a = pi_step(&speed, next->speed_reference_rad_s - input->speed_rad_s,
+                                   MOTION_DT, CURRENT_LIMIT_A);
+    next->speed_integral_a = speed.integral;
+}
+
+bool foc_motion_step(const FocMotionInput *input, FocMotionState *state, FocCurrentOutput *output) {
+    if (!foc_motion_inputs_valid(input, state)) return false;
+    FocMotionState next = *state;
+    update_motion_reference(input, &next);
+    FocCurrentInput current = input->current;
+    if (input->mode != FOC_ALIGN) current.reference_a = (Dq){0.0f, next.iq_reference_a};
+    PiController d = {input->current_kp.d, input->current_ki.d, next.current_integral_v.d};
+    PiController q = {input->current_kp.q, input->current_ki.q, next.current_integral_v.q};
+    if (!foc_current_step(&current, next.current_feedback_a, &d, &q, output)) return false;
+    next.current_feedback_a = output->feedback_a;
+    next.current_integral_v = (Dq){d.integral, q.integral};
+    *state = next;
     return true;
 }
 #endif

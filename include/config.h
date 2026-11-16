@@ -1,9 +1,9 @@
 #ifndef CM_CONFIG_H
 #define CM_CONFIG_H
 #ifdef CM_USE_SIMULINK_FOC
-#define CM_FIRMWARE_VERSION "0.2.1-simulink"
+#define CM_FIRMWARE_VERSION "0.3.0-simulink"
 #else
-#define CM_FIRMWARE_VERSION "0.1.3-sample13"
+#define CM_FIRMWARE_VERSION "0.3.0-native"
 #endif
 
 /* 用户给定参数。电阻/电感尚未辨识；所有限值是首次空载调试值，不是额定值。 */
@@ -14,6 +14,9 @@
 #define PWM_FREQUENCY_HZ       20000u
 #define PWM_PERIOD_TICKS       4200u
 #define CONTROL_DT             (1.0f / PWM_FREQUENCY_HZ)
+#define MOTION_FREQUENCY_HZ     1000u
+#define MOTION_DIVIDER          (PWM_FREQUENCY_HZ / MOTION_FREQUENCY_HZ)
+#define MOTION_DT              (1.0f / MOTION_FREQUENCY_HZ)
 #define ADC_REFERENCE_V        3.3f
 #define SHUNT_RESISTANCE_OHM    0.0005f
 #define DRV_CURRENT_GAIN        80.0f
@@ -32,7 +35,12 @@
 #define VELOCITY_KP            0.015f
 #define VELOCITY_KI            0.005f
 #define POSITION_KP            2.0f
+#define POSITION_LIMIT_RAD     100.0f
 #define IQ_SLEW_A_PER_S        0.5f
+/* Nominal value from the demo PMSM (1.5 * 7 * 0.003). Set measured Kt per axis via USB. */
+#define TORQUE_CONSTANT_NM_A   0.0315f
+#define TORQUE_CONSTANT_MIN    0.0001f
+#define TORQUE_CONSTANT_MAX    10.0f
 #define VELOCITY_FILTER_TAU_S  0.0005f
 #define ENCODER_POLL_PERIOD_US 500u
 #define BUS_MIN_V              8.0f

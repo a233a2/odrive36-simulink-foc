@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "foc.h"
 
-typedef enum { IDLE=0, CAL_ALIGN, CAL_SWEEP, CAL_SETTLE, RUN_CURRENT, RUN_VELOCITY, RUN_POSITION } MotorState;
+typedef enum { IDLE=0, CAL_ALIGN, CAL_SWEEP, CAL_SETTLE, RUN_TORQUE, RUN_VELOCITY, RUN_POSITION } MotorState;
 enum {
     FAULT_DRIVER=1u, FAULT_BUS=2u, FAULT_ENCODER=4u, FAULT_CURRENT=8u,
     FAULT_TIMEOUT=16u, FAULT_OVERRUN=32u, FAULT_OFFSET=64u, FAULT_CALIBRATION=128u,
@@ -12,11 +12,13 @@ enum {
 };
 typedef struct {
     MotorState state;
+    FocMode mode;
     bool calibrated;
     int direction;
     float electrical_offset, mechanical_zero;
     float position, velocity, id, iq, voltage_d, voltage_q;
     float target, velocity_ramp, iq_command;
+    float torque_constant_nm_a;
     float calibration_start, calibration_theta;
     uint32_t state_ticks, outer_ticks;
     PiController d_pi, q_pi, velocity_pi;

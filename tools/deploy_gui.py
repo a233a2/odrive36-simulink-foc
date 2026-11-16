@@ -129,6 +129,7 @@ class DeployApp:
         self.locked = []
         self.stage_labels = {}
         self.dialog = None
+        self.control_panel = None
         preset = preferences if preferences is not None else read_settings()
         project = detect_project()
         if isinstance(preset.get('project'), str) and preset['project']:
@@ -178,9 +179,11 @@ class DeployApp:
                      row=0, column=1, sticky='sw', pady=(14, 0))
         tk.Label(header, text='Simulink 固件部署', background=HEADER, foreground='#BBCDE2',
                  font=(self.ui_font, 10), anchor='w').grid(row=1, column=1, sticky='nw', pady=(0, 16))
+        ttk.Button(header, text='串口控制', style='Outline.TButton', command=self.open_control).grid(
+            row=0, column=2, rowspan=2, padx=(8, 0))
         tk.Label(header, text='STM32F405', background='#293C53', foreground='#DCE9F7',
                  font=(self.display_font, 10, 'bold'), padx=13, pady=6).grid(
-                     row=0, column=2, rowspan=2, padx=(16, 26))
+                     row=0, column=3, rowspan=2, padx=(16, 26))
 
         workspace = tk.Frame(self.root, background=CANVAS)
         workspace.grid(row=1, column=0, sticky='nsew', padx=20, pady=(18, 15))
@@ -349,6 +352,13 @@ class DeployApp:
             self.paths[key].set(choice)
             if key == 'model':
                 self.save_settings()
+
+    def open_control(self):
+        from control_gui import ControlPanel
+        if self.control_panel is not None and self.control_panel.winfo_exists():
+            self.control_panel.lift()
+        else:
+            self.control_panel = ControlPanel(self.root)
 
     def configure_tools(self):
         if self.dialog is not None and self.dialog.winfo_exists():
@@ -659,8 +669,10 @@ def main():
             def check_runtime():
                 try:
                     from test_firmware import check_arm_runtime
+                    from serial_control import check_serial_runtime
                     session = BuildSession(lambda *_: None)
                     check_arm_runtime(run=session.run, report=session.report)
+                    check_serial_runtime()
                 except Exception as error:
                     done('error', None, str(error))
                 else:

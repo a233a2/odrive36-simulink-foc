@@ -10,4 +10,4 @@ The repository's [MIT license](LICENSE) applies to the original project material
 
 The vendor manifest records the upstream revisions, source URLs and SHA-256 hashes. [Vendor manifest](vendor/manifest.json)
 
-Install MATLAB and its Coder products separately. PyInstaller, Unicorn and pyelftools are optional development dependencies installed via the build instructions. [MathWorks deployment rights](https://www.mathworks.com/help/pdf_doc/offering/offering.pdf) · [PyInstaller](https://github.com/pyinstaller/pyinstaller) · [Unicorn](https://github.com/unicorn-engine/unicorn) · [pyelftools](https://github.com/eliben/pyelftools)
+Install MATLAB and its Coder products separately. PyInstaller, Unicorn, pyelftools and pySerial are installed via the build instructions. [MathWorks deployment rights](https://www.mathworks.com/help/pdf_doc/offering/offering.pdf) · [PyInstaller](https://github.com/pyinstaller/pyinstaller) · [Unicorn](https://github.com/unicorn-engine/unicorn) · [pyelftools](https://github.com/eliben/pyelftools) · [pySerial](https://github.com/pyserial/pyserial)
