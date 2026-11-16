@@ -1,0 +1,11 @@
+{
+  "folders": [{"path": "."}],
+  "settings": {
+    "C_Cpp.default.configurationProvider": "cl.eide",
+    "EIDE.ARM.GCC.InstallDirectory": "${userHome}/.eide/tools/gcc_arm",
+    "EIDE.Builder.EnvironmentVariables": ["DOTNET_ROLL_FORWARD=Major"],
+    "files.encoding": "utf8",
+    "files.associations": {"*.h":"c"}
+  },
+  "extensions": {"recommendations": ["cl.eide", "marus25.cortex-debug"]}
+}

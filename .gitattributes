@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.slx binary
+*.png binary
+*.ico binary
+/vendor/** -text linguist-vendored
+/startup/startup_stm32f405xx.s -text linguist-vendored

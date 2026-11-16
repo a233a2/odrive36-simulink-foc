@@ -1,0 +1,294 @@
+{
+  "pins": {
+    "STMicroelectronics/cmsis-device-f4": "9192c7b9df75a142f2027ab266601fe061fc00b3",
+    "ARM-software/CMSIS_5": "5.9.0",
+    "hathach/tinyusb": "0.17.0"
+  },
+  "files": [
+    {
+      "path": "vendor/Device/stm32f4xx.h",
+      "url": "https://raw.githubusercontent.com/STMicroelectronics/cmsis-device-f4/9192c7b9df75a142f2027ab266601fe061fc00b3/Include/stm32f4xx.h",
+      "sha256": "a19edea6b2f4df2ab3c567782c4d313a52319c4303bd56ad7dd1d0e077014657"
+    },
+    {
+      "path": "vendor/Device/stm32f405xx.h",
+      "url": "https://raw.githubusercontent.com/STMicroelectronics/cmsis-device-f4/9192c7b9df75a142f2027ab266601fe061fc00b3/Include/stm32f405xx.h",
+      "sha256": "10c3b2dfc2b358d62a55668a7085ef07c44fc01abca8f2a08c2640a538040c7b"
+    },
+    {
+      "path": "vendor/Device/system_stm32f4xx.h",
+      "url": "https://raw.githubusercontent.com/STMicroelectronics/cmsis-device-f4/9192c7b9df75a142f2027ab266601fe061fc00b3/Include/system_stm32f4xx.h",
+      "sha256": "02c067d5a135f540c03215dc834b1e60a97bbd4e55bfd3994b0c82a15ea3012a"
+    },
+    {
+      "path": "startup/startup_stm32f405xx.s",
+      "url": "https://raw.githubusercontent.com/STMicroelectronics/cmsis-device-f4/9192c7b9df75a142f2027ab266601fe061fc00b3/Source/Templates/gcc/startup_stm32f405xx.s",
+      "sha256": "c26c40ea8a4c27e4a7900e1d29bdfd6cdf6b46fbf4cbebad116a478803bbcb8e"
+    },
+    {
+      "path": "vendor/Device/LICENSE.md",
+      "url": "https://raw.githubusercontent.com/STMicroelectronics/cmsis-device-f4/9192c7b9df75a142f2027ab266601fe061fc00b3/LICENSE.md",
+      "sha256": "dadb755f51d36614173b28c5790cb4a991e8f4cc822e5b634fd66a4f4145824d"
+    },
+    {
+      "path": "vendor/CMSIS/core_cm4.h",
+      "url": "https://raw.githubusercontent.com/ARM-software/CMSIS_5/5.9.0/CMSIS/Core/Include/core_cm4.h",
+      "sha256": "f5b63d52dd1557b15ca414cb59c264f595a7b5669db2a5878dffe22f4caedc8c"
+    },
+    {
+      "path": "vendor/CMSIS/cmsis_gcc.h",
+      "url": "https://raw.githubusercontent.com/ARM-software/CMSIS_5/5.9.0/CMSIS/Core/Include/cmsis_gcc.h",
+      "sha256": "43bfd1fe69fbbc2ca70aaf7d43cc3e20f16e0c7f66e1bdef9b51af6dc14b2617"
+    },
+    {
+      "path": "vendor/CMSIS/cmsis_compiler.h",
+      "url": "https://raw.githubusercontent.com/ARM-software/CMSIS_5/5.9.0/CMSIS/Core/Include/cmsis_compiler.h",
+      "sha256": "b51963d271c1571ca3463654c76aa7ea50c4eac5d0a2710df10414ac64d9e0f8"
+    },
+    {
+      "path": "vendor/CMSIS/cmsis_version.h",
+      "url": "https://raw.githubusercontent.com/ARM-software/CMSIS_5/5.9.0/CMSIS/Core/Include/cmsis_version.h",
+      "sha256": "184c19fd3ee73632edf35a0b4d49cd48be75fbf49e6ccb19d9db05fa83bea4b3"
+    },
+    {
+      "path": "vendor/CMSIS/mpu_armv7.h",
+      "url": "https://raw.githubusercontent.com/ARM-software/CMSIS_5/5.9.0/CMSIS/Core/Include/mpu_armv7.h",
+      "sha256": "29206b52ee02290ed6f5a5415ebd4187de802cf176d9b3cb844390d8e5571372"
+    },
+    {
+      "path": "vendor/CMSIS/LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/ARM-software/CMSIS_5/5.9.0/LICENSE.txt",
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+    },
+    {
+      "path": "vendor/tinyusb/LICENSE",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/LICENSE",
+      "sha256": "b171720e8a442e7a3957d83c62cd3299dbb29da3db534cc626f9dded0de2ca44"
+    },
+    {
+      "path": "vendor/tinyusb/src/class/cdc/cdc.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/class/cdc/cdc.h",
+      "sha256": "fda9b7ef8ec0eb2cd83d59e366a928253968b823bb14b09befb6b82019353cdf"
+    },
+    {
+      "path": "vendor/tinyusb/src/class/cdc/cdc_device.c",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/class/cdc/cdc_device.c",
+      "sha256": "c941fc1045433845b858971cd8e8b8c6ef73841d3a50780fd7115634644db80c"
+    },
+    {
+      "path": "vendor/tinyusb/src/class/cdc/cdc_device.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/class/cdc/cdc_device.h",
+      "sha256": "53f17c4bc6daa381ea7652dabcc1a2a46b84903e91d0e99778e77dbbf60a31bb"
+    },
+    {
+      "path": "vendor/tinyusb/src/class/cdc/cdc_host.c",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/class/cdc/cdc_host.c",
+      "sha256": "6c4a6866dd3c461a5e17b46105bea1760890f80267f65843c84c763e26fd23f9"
+    },
+    {
+      "path": "vendor/tinyusb/src/class/cdc/cdc_host.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/class/cdc/cdc_host.h",
+      "sha256": "b873f5bd8997ec81c63831b4b4507a57cd6cb994a395b6a273b9078ebefc14ae"
+    },
+    {
+      "path": "vendor/tinyusb/src/class/cdc/cdc_rndis.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/class/cdc/cdc_rndis.h",
+      "sha256": "f5fd31ee42c17b71f7459b730bde4488207ba863954318e29761538a1316e7d6"
+    },
+    {
+      "path": "vendor/tinyusb/src/class/cdc/cdc_rndis_host.c",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/class/cdc/cdc_rndis_host.c",
+      "sha256": "695f7ffd209b05127655c99dbd5b42410953dc28f64336f1611487e0da7bf84e"
+    },
+    {
+      "path": "vendor/tinyusb/src/class/cdc/cdc_rndis_host.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/class/cdc/cdc_rndis_host.h",
+      "sha256": "62c8c6122ce6165640300ff0cc38fd4f3d61d18cb4c4725f4276ffe42c220ce1"
+    },
+    {
+      "path": "vendor/tinyusb/src/class/cdc/serial/ch34x.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/class/cdc/serial/ch34x.h",
+      "sha256": "8d73509dc768adbdcb2a391d316184348738e97c35d1e4fef87fea55179d61aa"
+    },
+    {
+      "path": "vendor/tinyusb/src/class/cdc/serial/cp210x.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/class/cdc/serial/cp210x.h",
+      "sha256": "7fd5105911a42e48e79c80fa6587c918394e9ddbda1291e508b43e2d6bd152a8"
+    },
+    {
+      "path": "vendor/tinyusb/src/class/cdc/serial/ftdi_sio.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/class/cdc/serial/ftdi_sio.h",
+      "sha256": "fba3cfacbcdb22dbe8a6f6e7b3f3b3cfb5bac8762bf1951e8ba2d2815fc05b2a"
+    },
+    {
+      "path": "vendor/tinyusb/src/common/tusb_common.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/common/tusb_common.h",
+      "sha256": "eebeabf34f9d9fc53aecc637cb5d5b5dcc0f750f4d432754c61f8efeb28eadfd"
+    },
+    {
+      "path": "vendor/tinyusb/src/common/tusb_compiler.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/common/tusb_compiler.h",
+      "sha256": "2bb96d13cba54b14a2e22218a3490ea59b2b106557574b6d09ea561b18252324"
+    },
+    {
+      "path": "vendor/tinyusb/src/common/tusb_debug.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/common/tusb_debug.h",
+      "sha256": "8b7524672bfd66d0074ddebf7580c6c38d1fcc66aab35f7839f55f80de1b0b6f"
+    },
+    {
+      "path": "vendor/tinyusb/src/common/tusb_fifo.c",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/common/tusb_fifo.c",
+      "sha256": "15bc124f43163e9f3edb9d581ab62af05a9b4342522f0712e6b9f4ca694227f5"
+    },
+    {
+      "path": "vendor/tinyusb/src/common/tusb_fifo.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/common/tusb_fifo.h",
+      "sha256": "b2ffb668fb6f0dee1bb42684a340b99604440bb9d2ae7df22becf7f53467c4d9"
+    },
+    {
+      "path": "vendor/tinyusb/src/common/tusb_mcu.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/common/tusb_mcu.h",
+      "sha256": "8667e01e5213fcfa5d6f580762f3ee7a290cfe34524830985355cb120af80179"
+    },
+    {
+      "path": "vendor/tinyusb/src/common/tusb_private.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/common/tusb_private.h",
+      "sha256": "d3cba928a36397ac937184618f544db8d76e49514f94649cf346dd4573dd9567"
+    },
+    {
+      "path": "vendor/tinyusb/src/common/tusb_types.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/common/tusb_types.h",
+      "sha256": "4f0a8088d590049215091b32f5a409d2992834365b562bb1c25a3933879c0ecd"
+    },
+    {
+      "path": "vendor/tinyusb/src/common/tusb_verify.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/common/tusb_verify.h",
+      "sha256": "cce6b5acde9fda7d1a831acb1f7bf89d4146a8d351d58549099a3b55129b3792"
+    },
+    {
+      "path": "vendor/tinyusb/src/device/dcd.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/device/dcd.h",
+      "sha256": "7d710c5f36b2ed7cb3623d605c3765b8252e9ccbb176e3cbbc6f932cd9e6960d"
+    },
+    {
+      "path": "vendor/tinyusb/src/device/usbd.c",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/device/usbd.c",
+      "sha256": "3d828b6f523e919b8c538286526bed36a99cecdd1dd08bf1f9216705bcb9e088"
+    },
+    {
+      "path": "vendor/tinyusb/src/device/usbd.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/device/usbd.h",
+      "sha256": "454c6c562b2857bc5bf700d3b6802c04334f9207b330257fc27a35b60aef3751"
+    },
+    {
+      "path": "vendor/tinyusb/src/device/usbd_control.c",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/device/usbd_control.c",
+      "sha256": "bc2db0dd4c54536d4e7e5dc9530650c20916172ef327b5db6fee58b2291ea441"
+    },
+    {
+      "path": "vendor/tinyusb/src/device/usbd_pvt.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/device/usbd_pvt.h",
+      "sha256": "7610e41b27b0427d2c696d391ec5e6ee8c64e879759e92fe437b1c96b0419e65"
+    },
+    {
+      "path": "vendor/tinyusb/src/osal/osal.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/osal/osal.h",
+      "sha256": "a8c4430e85fa638ad03100d21702ec15d854fbb9bbf342c151500e4b1bbc4af2"
+    },
+    {
+      "path": "vendor/tinyusb/src/osal/osal_freertos.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/osal/osal_freertos.h",
+      "sha256": "bd16aed90d5d1c0d4c8aa4c05ed240fdd042ca26d6f20d3d0911b3fd18b79ae4"
+    },
+    {
+      "path": "vendor/tinyusb/src/osal/osal_mynewt.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/osal/osal_mynewt.h",
+      "sha256": "6374e76435ffcfd502c0f94fbee5ab33a67608a184c166a7dc2158c7d99bb183"
+    },
+    {
+      "path": "vendor/tinyusb/src/osal/osal_none.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/osal/osal_none.h",
+      "sha256": "565131db716ff4e713f151a7c5ddcd7f760c89eedae4db3b7acc327602720941"
+    },
+    {
+      "path": "vendor/tinyusb/src/osal/osal_pico.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/osal/osal_pico.h",
+      "sha256": "262dea97b2e5f20a7f30e08aad0d91aa4c3cfc3df77b6d36417e2b276db9a8fd"
+    },
+    {
+      "path": "vendor/tinyusb/src/osal/osal_rtthread.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/osal/osal_rtthread.h",
+      "sha256": "7488f7b82da072c98e717c61ec15ed0e866a3a1a67fb97c6ef7a37a11bfd37e1"
+    },
+    {
+      "path": "vendor/tinyusb/src/osal/osal_rtx4.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/osal/osal_rtx4.h",
+      "sha256": "d81936c6a210d6b43ba6b1d4295ab7619c483624fe8b17023f6fa262263d2ff0"
+    },
+    {
+      "path": "vendor/tinyusb/src/portable/synopsys/dwc2/dcd_dwc2.c",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/portable/synopsys/dwc2/dcd_dwc2.c",
+      "sha256": "53958c4bb95e3324a4d87a0afe42f9cc922df79d82ef134dad2ce598402da1ba"
+    },
+    {
+      "path": "vendor/tinyusb/src/portable/synopsys/dwc2/dwc2_bcm.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/portable/synopsys/dwc2/dwc2_bcm.h",
+      "sha256": "f06995e800ce5bd6c0f7a0d04439bd7e9bf92a8c22fb4da58a001a716e8d08ec"
+    },
+    {
+      "path": "vendor/tinyusb/src/portable/synopsys/dwc2/dwc2_efm32.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/portable/synopsys/dwc2/dwc2_efm32.h",
+      "sha256": "47761cf637edae8ef22f6f896df84ee6f5cc0b8db952beb441a7b0ee06e4e49f"
+    },
+    {
+      "path": "vendor/tinyusb/src/portable/synopsys/dwc2/dwc2_esp32.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/portable/synopsys/dwc2/dwc2_esp32.h",
+      "sha256": "3a377948c9eedcc93b7fd53ae36355fc7ec497cdf4a58c785a5046b2b798414e"
+    },
+    {
+      "path": "vendor/tinyusb/src/portable/synopsys/dwc2/dwc2_gd32.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/portable/synopsys/dwc2/dwc2_gd32.h",
+      "sha256": "00faa8aff582273f754e5e5c29c227a42a45776c4b75de19ccf6faa818c2f9d8"
+    },
+    {
+      "path": "vendor/tinyusb/src/portable/synopsys/dwc2/dwc2_info.md",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/portable/synopsys/dwc2/dwc2_info.md",
+      "sha256": "0b38ba893699c9ec4ea3406d6c1d0c5c3cd7b6c1e1217e99d44f130f35a96eaf"
+    },
+    {
+      "path": "vendor/tinyusb/src/portable/synopsys/dwc2/dwc2_info.py",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/portable/synopsys/dwc2/dwc2_info.py",
+      "sha256": "6dcccb12ca4b2f4557f0103e419a812e32149e3147617f1a76afe337fd331691"
+    },
+    {
+      "path": "vendor/tinyusb/src/portable/synopsys/dwc2/dwc2_stm32.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/portable/synopsys/dwc2/dwc2_stm32.h",
+      "sha256": "2e453176ff0a62fdd8563301fac88ba3f362e7cbeffbb041e843f19408ddb4b5"
+    },
+    {
+      "path": "vendor/tinyusb/src/portable/synopsys/dwc2/dwc2_type.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/portable/synopsys/dwc2/dwc2_type.h",
+      "sha256": "6d166c8bec438673b352820a8f776e382d8c23b14e731e686ef4e7e9ba27fe55"
+    },
+    {
+      "path": "vendor/tinyusb/src/portable/synopsys/dwc2/dwc2_xmc.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/portable/synopsys/dwc2/dwc2_xmc.h",
+      "sha256": "7f567545ccfeb8c6b12c9690387fe4def7e5b69f16de8837dfa30b460e76eb2f"
+    },
+    {
+      "path": "vendor/tinyusb/src/tusb.c",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/tusb.c",
+      "sha256": "0f3ab526ca866b9129c6d3dbee3e8c43292cf2271836ee94998814eda26829dc"
+    },
+    {
+      "path": "vendor/tinyusb/src/tusb.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/tusb.h",
+      "sha256": "f4b6a38c060efd2641147cdf03fe479e46c0671ee89b5f82be583e89b386b378"
+    },
+    {
+      "path": "vendor/tinyusb/src/tusb_option.h",
+      "url": "https://raw.githubusercontent.com/hathach/tinyusb/0.17.0/src/tusb_option.h",
+      "sha256": "3dd0e7640da72cde50f53977b70cb7575b283c3bf895df0d73bee6982cf0d194"
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+version: "4.1"
+name: CM_Odrive
+type: ARM
+deviceName: STM32F405RG
+packDir: null
+srcDirs:
+  - src
+  - startup
+  - simulink/firmware
+  - simulink/deployed
+virtualFolder:
+  name: <virtual_root>
+  files:
+    - path: vendor/tinyusb/src/tusb.c
+    - path: vendor/tinyusb/src/common/tusb_fifo.c
+    - path: vendor/tinyusb/src/device/usbd.c
+    - path: vendor/tinyusb/src/device/usbd_control.c
+    - path: vendor/tinyusb/src/class/cdc/cdc_device.c
+    - path: vendor/tinyusb/src/portable/synopsys/dwc2/dcd_dwc2.c
+  folders: []
+dependenceList: []
+outDir: build
+miscInfo:
+  uid: cm-odrive-f405-v36
+targets:
+  Debug:
+    cppPreprocessAttrs:
+      defineList:
+        - STM32F405xx
+        - HSE_VALUE=8000000
+      incList:
+        - include
+        - vendor/Device
+        - vendor/CMSIS
+        - vendor/tinyusb/src
+      libList: []
+    excludeList:
+      - simulink/firmware
+      - simulink/deployed
+    settings:
+      debugger: cortex-debug
+    toolchain: GCC
+    toolchainConfigMap:
+      GCC:
+        archExtensions: ""
+        cpuType: Cortex-M4
+        floatingPointHardware: single
+        options:
+          version: 5
+          afterBuildTasks: []
+          asm-compiler:
+            ASM_FLAGS: ""
+          beforeBuildTasks: []
+          c/cpp-compiler:
+            CXX_FLAGS: ""
+            C_FLAGS: -Wextra -Wdouble-promotion -fno-common -fno-math-errno
+            language-c: gnu11
+            language-cpp: c++11
+            one-elf-section-per-data: true
+            one-elf-section-per-function: true
+            optimization: level-2
+            warnings: all-warnings
+          global:
+            $float-abi-type: hard
+            misc-control: --specs=nosys.specs --specs=nano.specs
+            output-debug-info: enable
+          linker:
+            LD_FLAGS: -u _printf_float -u _scanf_float
+            LIB_FLAGS: -lm
+            output-format: elf
+            remove-unused-input-sections: true
+        scatterFilePath: stm32f405_flash.ld
+        storageLayout:
+          RAM:
+            - id: 1
+              isChecked: "1"
+              mem:
+                size: "0x20000"
+                startAddr: "0x20000000"
+              noInit: false
+              tag: IRAM
+          ROM:
+            - id: 1
+              isChecked: "1"
+              isStartup: true
+              mem:
+                size: "0x100000"
+                startAddr: "0x08000000"
+              tag: IROM
+        useCustomScatterFile: true
+    uploadConfigMap:
+      Custom:
+        bin: ""
+        commandLine: powershell -NoProfile -File "${workspaceFolder}/tools/flash.ps1" -Interface USB
+        eraseChipCommand: ""
+    uploader: Custom
+  Simulink_FOC:
+    cppPreprocessAttrs:
+      defineList:
+        - STM32F405xx
+        - HSE_VALUE=8000000
+        - CM_USE_SIMULINK_FOC
+      incList:
+        - include
+        - vendor/Device
+        - vendor/CMSIS
+        - vendor/tinyusb/src
+        - simulink/deployed/current
+      libList: []
+    excludeList: []
+    settings:
+      debugger: cortex-debug
+    toolchain: GCC
+    toolchainConfigMap:
+      GCC:
+        archExtensions: ""
+        cpuType: Cortex-M4
+        floatingPointHardware: single
+        options:
+          version: 5
+          afterBuildTasks: []
+          asm-compiler:
+            ASM_FLAGS: ""
+          beforeBuildTasks: []
+          c/cpp-compiler:
+            CXX_FLAGS: ""
+            C_FLAGS: -Wextra -Wdouble-promotion -fno-common -fno-math-errno
+            language-c: gnu11
+            language-cpp: c++11
+            one-elf-section-per-data: true
+            one-elf-section-per-function: true
+            optimization: level-2
+            warnings: all-warnings
+          global:
+            $float-abi-type: hard
+            misc-control: --specs=nosys.specs --specs=nano.specs
+            output-debug-info: enable
+          linker:
+            LD_FLAGS: -u _printf_float -u _scanf_float
+            LIB_FLAGS: -lm
+            output-format: elf
+            remove-unused-input-sections: true
+        scatterFilePath: stm32f405_flash.ld
+        storageLayout:
+          RAM:
+            - id: 1
+              isChecked: "1"
+              mem:
+                size: "0x20000"
+                startAddr: "0x20000000"
+              noInit: false
+              tag: IRAM
+          ROM:
+            - id: 1
+              isChecked: "1"
+              isStartup: true
+              mem:
+                size: "0x100000"
+                startAddr: "0x08000000"
+              tag: IROM
+        useCustomScatterFile: true
+    uploadConfigMap:
+      Custom:
+        bin: ""
+        commandLine: powershell -NoProfile -File "${workspaceFolder}/tools/flash.ps1" -Interface USB -Image "${ExecutableName}.hex"
+        eraseChipCommand: ""
+    uploader: Custom

@@ -1,0 +1,28 @@
+name: Cortex-M4 native firmware
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the Cortex-M toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi
+      - name: Link the native firmware
+        run: python3 tools/build.py
+      - name: Run the ARM regression
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install unicorn==2.1.4 pyelftools==0.32
+          .venv/bin/python tools/test_firmware.py
